@@ -1,0 +1,8 @@
+{
+  "name": "Remix: 탕탕특공대",
+  "description": "중독성 넘치는 모바일 뱀서라이크 로그라이크 슈팅 게임 - 탕탕특공대!",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
