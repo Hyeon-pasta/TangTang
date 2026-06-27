@@ -73,8 +73,6 @@ interface MainMenuProps {
   onOpenShop: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
-  isFullScreen: boolean;
-  onToggleFullScreen: (val: boolean) => void;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({
@@ -85,8 +83,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onOpenShop,
   soundEnabled,
   onToggleSound,
-  isFullScreen,
-  onToggleFullScreen,
 }) => {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -97,7 +93,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   const currentRank = getRankByHighScore(highScore);
 
   return (
-    <div className="flex flex-col items-center justify-between min-h-screen w-full bg-slate-950 text-white p-6 md:p-8 select-none">
+    <div className="w-full h-full overflow-y-auto bg-slate-950 text-white select-none">
+      <div className="flex flex-col items-center justify-between min-h-full w-full p-4 md:p-6 space-y-4 pb-8">
       {/* Top Bar with Profile/Stats */}
       <div className="w-full max-w-md flex justify-between items-center bg-slate-900/60 p-4 rounded-2xl border border-slate-800 backdrop-blur-md">
         <div className="flex items-center space-x-3">
@@ -127,19 +124,19 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       </div>
 
       {/* Main Title Banner */}
-      <div className="flex flex-col items-center my-6 text-center animate-fade-in">
-        <div className="relative mb-2">
+      <div className="flex flex-col items-center my-3 text-center animate-fade-in">
+        <div className="relative mb-1.5">
           <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 opacity-30 blur-md animate-pulse" />
-          <div className="relative bg-slate-900 px-6 py-2 rounded-2xl border border-slate-800">
-            <span className="text-emerald-400 text-xs font-bold tracking-[0.2em] font-sans">
+          <div className="relative bg-slate-900 px-4 py-1.5 rounded-2xl border border-slate-800">
+            <span className="text-emerald-400 text-[10px] font-bold tracking-[0.2em] font-sans">
               MOBILIZED ACTION SURVIVOR
             </span>
           </div>
         </div>
-        <h1 className="text-5xl md:text-6xl font-black tracking-tight bg-gradient-to-b from-white via-slate-100 to-slate-400 bg-clip-text text-transparent drop-shadow-lg font-sans">
+        <h1 className="text-4xl md:text-5xl font-black tracking-tight bg-gradient-to-b from-white via-slate-100 to-slate-400 bg-clip-text text-transparent drop-shadow-lg font-sans">
           탕탕특공대
         </h1>
-        <p className="text-slate-400 text-sm mt-2 max-w-xs md:max-w-md">
+        <p className="text-slate-400 text-xs mt-1.5 max-w-xs md:max-w-md">
           자동 공격 무기를 선택하고, 시시각각 몰려드는 수천 마리의 몬스터로부터 5분 동안 생존하세요!
         </p>
       </div>
@@ -263,41 +260,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
         )}
       </div>
 
-      {/* Screen Size Selector */}
-      <div className="w-full max-w-md mt-3 bg-slate-900/40 p-3 rounded-2xl border border-slate-900 backdrop-blur-md flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-300">화면 크기 선택</span>
-        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-900">
-          <button
-            onClick={() => {
-              soundEngine.playUpgradeSelect();
-              onToggleFullScreen(false);
-            }}
-            className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all ${
-              !isFullScreen
-                ? "bg-gradient-to-r from-slate-700 to-slate-600 text-white shadow-md shadow-slate-950/20"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            모바일 화면
-          </button>
-          <button
-            onClick={() => {
-              soundEngine.playUpgradeSelect();
-              onToggleFullScreen(true);
-            }}
-            className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all ${
-              isFullScreen
-                ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-slate-950 shadow-md shadow-emerald-950/20"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            전체 화면
-          </button>
-        </div>
-      </div>
-
       {/* Main Buttons / Options */}
-      <div className="w-full max-w-md flex flex-col space-y-3 mt-4">
+      <div className="w-full max-w-md flex flex-col space-y-3">
         <button
           onClick={() => {
             soundEngine.playUpgradeSelect();
@@ -339,10 +303,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       </div>
 
       {/* Bottom info */}
-      <div className="text-[10px] text-slate-600 text-center mt-6">
+      <div className="text-[10px] text-slate-600 text-center mt-2">
         © 2026 Survivor Studio • HTML5 Canvas Optimized
       </div>
     </div>
+  </div>
   );
 };
 
@@ -470,7 +435,7 @@ export const Shop: React.FC<ShopProps> = ({
   };
 
   return (
-    <div className="flex flex-col min-h-screen w-full bg-slate-950 text-white select-none">
+    <div className="flex flex-col h-full w-full bg-slate-950 text-white select-none">
       {/* Header */}
       <div className="p-4 border-b border-slate-900 bg-slate-900/40 backdrop-blur-md flex justify-between items-center sticky top-0 z-20">
         <div className="flex items-center space-x-2">

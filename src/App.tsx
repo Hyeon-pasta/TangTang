@@ -38,14 +38,6 @@ export default function App() {
 
   // Settings
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [isFullScreen, setIsFullScreen] = useState<boolean>(() => {
-    return localStorage.getItem("tang_fullscreen") === "true";
-  });
-
-  const handleToggleFullScreen = (val: boolean) => {
-    setIsFullScreen(val);
-    localStorage.setItem("tang_fullscreen", val.toString());
-  };
 
   // Active game play session states
   const [isPaused, setIsPaused] = useState<boolean>(false);
@@ -200,11 +192,7 @@ export default function App() {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-sky-500/10 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Main Premium Portrait Container Frame */}
-      <div className={`w-full bg-slate-950 flex flex-col relative overflow-hidden shadow-2xl transition-all duration-300 ${
-        isFullScreen
-          ? "max-w-full h-screen border-0 rounded-none"
-          : "max-w-md h-screen md:h-[840px] md:max-h-[92vh] md:rounded-[40px] md:border-[10px] md:border-slate-900"
-      }`}>
+      <div className="w-full max-w-md h-[100dvh] md:h-[840px] md:max-h-[92vh] bg-slate-950 flex flex-col relative overflow-hidden shadow-2xl transition-all duration-300 md:rounded-[40px] md:border-[10px] md:border-slate-900">
         
         {/* VIEW 1: Main Menu Landing screen */}
         {currentScreen === "MENU" && (
@@ -216,8 +204,6 @@ export default function App() {
             onOpenShop={() => setCurrentScreen("SHOP")}
             soundEnabled={soundEnabled}
             onToggleSound={handleToggleSound}
-            isFullScreen={isFullScreen}
-            onToggleFullScreen={handleToggleFullScreen}
           />
         )}
 
