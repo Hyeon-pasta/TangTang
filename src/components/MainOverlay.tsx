@@ -49,6 +49,8 @@ export const renderSkillIcon = (id: string, className = "w-6 h-6") => {
       return <Zap className={`${className} text-yellow-400`} />;
     case WeaponType.GATLING:
       return <Sparkles className={`${className} text-amber-400 animate-pulse`} />;
+    case WeaponType.POOP_SPRAY:
+      return <Sparkles className={`${className} text-amber-700`} />;
     case PassiveType.ATTACK_BOOST:
       return <Swords className={`${className} text-red-400`} />;
     case PassiveType.MAGNET:

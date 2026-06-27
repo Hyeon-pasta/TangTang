@@ -80,6 +80,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Boss health indicator
   const [bossHealth, setBossHealth] = useState<{ current: number; max: number; name: string } | null>(null);
+  const [finalBossTimeLeft, setFinalBossTimeLeft] = useState<number | null>(null);
 
   // Game references
   const gameLoopRef = useRef<number | null>(null);
@@ -126,6 +127,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       molotov: 0,
       lightning: 0,
       gatling: 0,
+      poopSpray: 0,
+      poopRainbowState: 0,
       enemySpawn: 0,
       gameSecond: 0,
     },
@@ -140,6 +143,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     activeWeaponEvolutions: {} as Record<WeaponType, boolean>,
     bossSpawned: false,
     bossDefeated: false,
+    finalBossSpawned: false,
+    finalBossActive: false,
+    finalBossTimer: 180,
+    nextMiniBossKills: 100,
+    miniBossKillIncrement: 150,
+    miniBossCount: 0,
+    spawnedDashBoss: false,
+    spawnedBurstBoss: false,
+    spawnedSlamBoss: false,
     isLevelingUp: false,
     isEnded: false,
     equipmentReinforcements: {
@@ -230,6 +242,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         molotov: 0,
         lightning: 0,
         gatling: 0,
+        poopSpray: 0,
+        poopRainbowState: 0,
         enemySpawn: 0,
         gameSecond: 0,
       },
@@ -248,9 +262,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         [WeaponType.MOLOTOV]: false,
         [WeaponType.LIGHTNING]: false,
         [WeaponType.GATLING]: false,
+        [WeaponType.POOP_SPRAY]: false,
       },
       bossSpawned: false,
       bossDefeated: false,
+      finalBossSpawned: false,
+      finalBossActive: false,
+      finalBossTimer: 180,
+      nextMiniBossKills: 100,
+      miniBossKillIncrement: 150,
+      miniBossCount: 0,
+      spawnedDashBoss: false,
+      spawnedBurstBoss: false,
+      spawnedSlamBoss: false,
       isLevelingUp: false,
       isEnded: false,
       equipmentReinforcements: {
@@ -367,6 +391,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     setInGameKills(g.player.kills);
     setInGameTime(g.player.timeElapsed);
     setInGameGold(g.player.gold);
+    setFinalBossTimeLeft(g.finalBossActive ? g.finalBossTimer : null);
     if (g.equipmentReinforcements) {
       setReinforcements({ ...g.equipmentReinforcements });
     }
@@ -484,6 +509,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       { id: WeaponType.GUARDIAN, name: "수호자", desc: "플레이어 주변을 공전하는 보호막을 생성해 적들을 밀쳐냅니다." },
       { id: WeaponType.MOLOTOV, name: "화염병", desc: "바닥에 던져 지속적인 화염 대미지를 주는 불길 지대를 만듭니다." },
       { id: WeaponType.LIGHTNING, name: "번개 발사기", desc: "하늘에서 무작위 대상을 향해 치명적인 낙뢰를 떨어뜨립니다." },
+      { id: WeaponType.POOP_SPRAY, name: "똥 뿌리기", desc: "캐릭터 뒤에 갈색깔 똥이 지속적으로 뿌려져 밟는 적들에게 지속적인 광역 피해를 줍니다." },
     ];
 
     // Passive list
@@ -539,6 +565,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         p: PassiveType.COOLDOWN_REDUCE,
         name: "초시공 플라즈마 개틀링",
         desc: "미래 지향형 플라즈마 에너지포로 격상! 적을 무자비하게 통과하며 연쇄 전자기 유도 미사일을 사방에 난사합니다.",
+      },
+      {
+        w: WeaponType.POOP_SPRAY,
+        p: PassiveType.SPEED_BOOST,
+        name: "황금 무지개 똥폭풍",
+        desc: "최종 똥 뿌리기로 진화! 앞뒤좌우로 똥을 뿌리고, 10초마다 6초 동안 무지막지한 위력의 무지개 똥을 뿌려 적들을 파멸시킵니다.",
       }
     ];
 
@@ -569,7 +601,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // Max level is 5
       if (!data) {
         // Can acquire new weapon if we have less than 6 active weapons (or just unlimited for fun, but standard limit is 6)
-        if (Object.keys(currentWeapons).length < 5) {
+        if (Object.keys(currentWeapons).length < 6) {
           cards.push({
             id: `new-${wpn.id}`,
             name: `${wpn.name} (획득)`,
@@ -599,7 +631,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     passivePool.forEach((pas) => {
       const data = currentPassives[pas.id];
       if (!data) {
-        if (Object.keys(currentPassives).length < 5) {
+        if (Object.keys(currentPassives).length < 6) {
           cards.push({
             id: `new-${pas.id}`,
             name: `${pas.name} (획득)`,
@@ -632,7 +664,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     if (canDraftGatling) {
       const gatlingData = currentWeapons[WeaponType.GATLING];
       if (!gatlingData) {
-        if (Object.keys(currentWeapons).length < 5) {
+        if (Object.keys(currentWeapons).length < 6) {
           cards.push({
             id: `new-${WeaponType.GATLING}`,
             name: "전설의 개틀링건 (보급)",
@@ -796,7 +828,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Check for BOSS spawning: 60s for normal mode, every 120s (60, 180, 300, 420, ...) for endless mode
       if (isEndlessMode) {
-        if (g.player.timeElapsed > 0 && g.player.timeElapsed % 120 === 60) {
+        if (g.player.timeElapsed > 0 && g.player.timeElapsed % 120 === 60 && g.player.timeElapsed < 600) {
           if (g.enemies.filter(e => e.type === "BOSS").length === 0) {
             spawnBoss();
           }
@@ -807,10 +839,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
       }
 
-      // Check Victory Condition: Survival for 5 minutes (300 seconds) in normal mode
-      if (!isEndlessMode && g.player.timeElapsed >= 300) {
-        endGame(true);
-        return;
+      // Check Final Boss spawning at 10 minutes (600s)
+      if (g.player.timeElapsed === 600 && !g.finalBossSpawned) {
+        spawnFinalBoss();
+      }
+
+      // Countdown timer for Final Boss active (3 minutes limit)
+      if (g.finalBossActive) {
+        g.finalBossTimer -= 1;
+        if (g.finalBossTimer <= 0) {
+          endGame(false); // Game Over (Timeout)
+          return;
+        }
       }
 
       updateReactHUD();
@@ -940,6 +980,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (g.timers.gatling >= rate) {
         g.timers.gatling = 0;
         fireGatling(gatData);
+      }
+    }
+
+    // Poop Spray (Drops poop behind character continuously)
+    if (g.skills.weapons[WeaponType.POOP_SPRAY]) {
+      const poopData = g.skills.weapons[WeaponType.POOP_SPRAY];
+      g.timers.poopSpray = (g.timers.poopSpray || 0) + delta;
+
+      // Cycle rainbow poop timer if max level / evolved
+      if (poopData.isEvo) {
+        g.timers.poopRainbowState = (g.timers.poopRainbowState || 0) + delta;
+        if (g.timers.poopRainbowState >= 10000) {
+          g.timers.poopRainbowState -= 10000;
+        }
+      }
+
+      // Poop drop rate (e.g. drop every 350ms, slightly faster if evolved or higher level)
+      const rate = (poopData.isEvo ? 200 : 400 - poopData.level * 25) * cdMultiplier;
+      if (g.timers.poopSpray >= rate) {
+        g.timers.poopSpray = 0;
+        firePoopSpray(poopData);
       }
     }
   };
@@ -1142,7 +1203,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         dy: Math.sin(finalAngle),
         speed: wpnData.isEvo ? 14 : 9 + wpnData.level,
         size: wpnData.isEvo ? 12 : 5 + wpnData.level * 0.8,
-        damage: (8 + wpnData.level * 3) * g.player.atkMultiplier * (wpnData.isEvo ? 2.4 : 1),
+        damage: (8 + wpnData.level * 3) * g.player.atkMultiplier * (wpnData.isEvo ? 2.4 : 1) * 0.7,
         piercing: wpnData.isEvo ? 999 : 1 + Math.floor(wpnData.level / 2),
         color: wpnData.isEvo ? "#fbbf24" : "#facc15",
         life: 1500,
@@ -1168,6 +1229,83 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     if (soundEnabledRef.current && Math.random() < 0.35) {
       soundEngine.playShoot();
+    }
+  };
+
+  const firePoopSpray = (wpnData: any) => {
+    const g = gameState.current;
+
+    // Determine if currently in rainbow poop mode (first 6 seconds of 10s cycle)
+    let isRainbowMode = false;
+    if (wpnData.isEvo) {
+      const rainbowTimer = g.timers.poopRainbowState || 0;
+      if (rainbowTimer < 6000) {
+        isRainbowMode = true;
+      }
+    }
+
+    // Level-based damage
+    let damage = 10;
+    if (wpnData.level === 2) damage = 20;
+    else if (wpnData.level === 3) damage = 30;
+    else if (wpnData.level === 4) damage = 40;
+    else if (wpnData.level >= 5) damage = 50;
+
+    // Radius
+    const radius = wpnData.isEvo ? 32 : 16 + wpnData.level * 2;
+
+    // Character movement vector to drop "behind"
+    let dropX = g.player.x;
+    let dropY = g.player.y;
+    const vx = g.player.vx || 0;
+    const vy = g.player.vy || 0;
+    const speed = Math.hypot(vx, vy);
+
+    let offsetDist = 18;
+    if (speed > 0) {
+      dropX -= (vx / speed) * offsetDist;
+      dropY -= (vy / speed) * offsetDist;
+    }
+
+    // Push behind poop
+    g.projectiles.push({
+      type: "POOP",
+      x: dropX,
+      y: dropY,
+      timer: 0,
+      duration: 4500, // persists on ground for 4.5 seconds
+      radius: radius,
+      damage: isRainbowMode ? 100 : damage,
+      isRainbow: isRainbowMode,
+      tickTimer: 0,
+    });
+
+    // If evolved, also spray poop in front, back, left, right (앞뒤좌우)
+    if (wpnData.isEvo) {
+      const offsets = [
+        { dx: 35, dy: 0 },
+        { dx: -35, dy: 0 },
+        { dx: 0, dy: 35 },
+        { dx: 0, dy: -35 },
+      ];
+      offsets.forEach((off) => {
+        g.projectiles.push({
+          type: "POOP",
+          x: g.player.x + off.dx,
+          y: g.player.y + off.dy,
+          timer: 0,
+          duration: 4500,
+          radius: radius,
+          damage: isRainbowMode ? 100 : damage,
+          isRainbow: isRainbowMode,
+          tickTimer: 0,
+        });
+      });
+    }
+
+    // Play soft sound if enabled
+    if (soundEnabledRef.current && Math.random() < 0.1) {
+      soundEngine.playHit();
     }
   };
 
@@ -1344,6 +1482,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         return p.timer < p.duration;
       }
 
+      if (p.type === "POOP") {
+        p.timer += delta;
+        p.tickTimer += delta;
+
+        // Deal pulse damage over time
+        if (p.tickTimer >= 250) {
+          p.tickTimer = 0;
+          for (let i = 0; i < g.enemies.length; i++) {
+            const e = g.enemies[i];
+            const dist = Math.hypot(e.x - p.x, e.y - p.y);
+            if (dist < p.radius + e.radius) {
+              applyDamageToEnemy(e, p.damage);
+            }
+          }
+        }
+
+        return p.timer < p.duration;
+      }
+
       if (p.type === "LIGHTNING") {
         p.timer -= delta;
         return p.timer > 0;
@@ -1368,6 +1525,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Drop XP Gem
         spawnGem(e.x, e.y, e.type);
 
+        if (!g.finalBossActive) {
+          if (g.player.kills >= 2000 && !g.spawnedDashBoss) {
+            g.spawnedDashBoss = true;
+            spawnMiniBoss("DASH", true);
+          } else if (g.player.kills >= 5000 && !g.spawnedBurstBoss) {
+            g.spawnedBurstBoss = true;
+            spawnMiniBoss("BURST", true);
+          } else if (g.player.kills >= 7500 && !g.spawnedSlamBoss) {
+            g.spawnedSlamBoss = true;
+            spawnMiniBoss("SLAM", true);
+          } else if (g.player.kills >= g.nextMiniBossKills) {
+            spawnMiniBoss();
+            g.nextMiniBossKills += g.miniBossKillIncrement;
+            g.miniBossKillIncrement += 50;
+          }
+        }
+
         if (e.type === "BOSS") {
           g.bossDefeated = true;
           setBossHealth(null);
@@ -1383,6 +1557,47 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           });
         }
 
+        if (e.type === "MINI_BOSS") {
+          g.particles.push(...createExplosion(e.x, e.y, e.color, 30));
+          soundEngine.playLevelUp(); // play level up chime
+          forceLevelUp(); // immediately level up 1 level!
+          
+          // Drop a gold bag on defeat
+          g.gems.push({
+            x: e.x,
+            y: e.y,
+            type: "GOLD_BAG",
+            size: 12,
+            pulse: 0,
+          });
+        }
+
+        if (e.type === "FINAL_BOSS") {
+          g.finalBossActive = false;
+          g.finalBossDefeated = true;
+          setBossHealth(null);
+          g.particles.push(...createExplosion(e.x, e.y, "#fbbf24", 80));
+          
+          // Defeat reward: 2000 Gold!
+          const ringLevel = g.equipmentReinforcements?.ring || 0;
+          const goldMultiplier = 1.0 + ringLevel * 0.15;
+          const goldReward = Math.floor(2000 * goldMultiplier);
+          g.player.gold += goldReward;
+
+          g.damageTexts.push({
+            x: e.x,
+            y: e.y - 15,
+            text: `최종 보스 제압! +${goldReward.toLocaleString()}G`,
+            color: "#fbbf24",
+            size: 20,
+            life: 2.5,
+          });
+
+          soundEngine.playLevelUp();
+          endGame(true); // Victory!
+          return false;
+        }
+
         // Spark explosion
         g.particles.push(...createExplosion(e.x, e.y, e.color, 8));
         return false;
@@ -1394,7 +1609,216 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const dist = Math.hypot(dx, dy);
 
       // Handle custom movement pattern
-      if (e.type === "SPITTER" && dist < 140) {
+      if (e.type === "MINI_BOSS") {
+        if (e.patternType === "DASH") {
+          // DASH Pattern: NORMAL -> CHARGING (stand still, charge) -> DASHING (move fast)
+          if (e.state === "NORMAL") {
+            e.patternTimer = (e.patternTimer || 0) + delta;
+            if (e.patternTimer >= 2200) {
+              e.state = "CHARGING";
+              e.patternTimer = 0;
+              // Aim direction at player
+              const angle = Math.atan2(dy, dx);
+              e.dashDx = Math.cos(angle);
+              e.dashDy = Math.sin(angle);
+            }
+            // Move normally
+            const angle = Math.atan2(dy, dx);
+            e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+            e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+          } else if (e.state === "CHARGING") {
+            e.patternTimer = (e.patternTimer || 0) + delta;
+            if (e.patternTimer >= 1000) {
+              e.state = "DASHING";
+              e.patternTimer = 0;
+            }
+          } else if (e.state === "DASHING") {
+            e.patternTimer = (e.patternTimer || 0) + delta;
+            // Move super fast
+            e.x += e.dashDx * e.speed * 4.2 * (delta / 16.6);
+            e.y += e.dashDy * e.speed * 4.2 * (delta / 16.6);
+            if (e.patternTimer >= 700) {
+              e.state = "NORMAL";
+              e.patternTimer = 0;
+            }
+          }
+        } else if (e.patternType === "BURST") {
+          // BURST Pattern: Move normally + Shoot radial ring of purples
+          e.shootTimer = (e.shootTimer || 0) + delta;
+          if (e.shootTimer >= 2000) {
+            e.shootTimer = 0;
+            const numProjectiles = 12;
+            for (let i = 0; i < numProjectiles; i++) {
+              const angle = (i * Math.PI * 2) / numProjectiles;
+              g.projectiles.push({
+                type: "ACID_BALL",
+                x: e.x,
+                y: e.y,
+                dx: Math.cos(angle),
+                dy: Math.sin(angle),
+                speed: 3.0,
+                size: 9,
+                damage: e.damage * 0.8,
+                color: e.color, // Purple
+                life: 3500,
+              });
+            }
+          }
+          // Move normally
+          const angle = Math.atan2(dy, dx);
+          e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+          e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+        } else if (e.patternType === "SLAM") {
+          // SLAM Pattern: Move normally -> stand still to slam and release shockwave
+          if (e.state === "NORMAL") {
+            e.patternTimer = (e.patternTimer || 0) + delta;
+            if (e.patternTimer >= 3500) {
+              e.state = "SLAM_PREP";
+              e.patternTimer = 0;
+            }
+            // Move normally
+            const angle = Math.atan2(dy, dx);
+            e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+            e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+          } else if (e.state === "SLAM_PREP") {
+            e.patternTimer = (e.patternTimer || 0) + delta;
+            if (e.patternTimer >= 1200) {
+              e.state = "SLAM_RELEASE";
+              e.patternTimer = 0;
+              if (dist < 130) {
+                g.player.hp -= e.damage * 1.5;
+                g.screenShake = 8;
+                if (g.player.hp <= 0) {
+                  endGame(false);
+                }
+              }
+              // Spawn cool visual particles in an expanding ring
+              for (let i = 0; i < 24; i++) {
+                const angle = (i * Math.PI * 2) / 24;
+                g.particles.push({
+                  x: e.x,
+                  y: e.y,
+                  dx: Math.cos(angle) * 4.5,
+                  dy: Math.sin(angle) * 4.5,
+                  size: 4,
+                  color: e.color, // Cyan shockwave
+                  life: 0.6,
+                  decay: 0.03,
+                });
+              }
+            }
+          } else if (e.state === "SLAM_RELEASE") {
+            e.patternTimer = (e.patternTimer || 0) + delta;
+            if (e.patternTimer >= 600) {
+              e.state = "NORMAL";
+              e.patternTimer = 0;
+            }
+          }
+        }
+      } else if (e.type === "FINAL_BOSS") {
+        // FINAL BOSS combines patterns! It cycles every 4 seconds
+        e.patternTimer = (e.patternTimer || 0) + delta;
+        if (e.patternTimer >= 4000) {
+          e.patternTimer = 0;
+          e.currentPattern = ((e.currentPattern || 0) + 1) % 3;
+          e.state = "NORMAL"; // reset state for new pattern
+        }
+
+        const pat = e.currentPattern || 0;
+        if (pat === 0) {
+          // DASH Mode
+          if (e.state === "NORMAL") {
+            e.shootTimer = (e.shootTimer || 0) + delta;
+            if (e.shootTimer >= 1500) {
+              e.state = "CHARGING";
+              e.shootTimer = 0;
+              const angle = Math.atan2(dy, dx);
+              e.dashDx = Math.cos(angle);
+              e.dashDy = Math.sin(angle);
+            }
+            const angle = Math.atan2(dy, dx);
+            e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+            e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+          } else if (e.state === "CHARGING") {
+            e.shootTimer = (e.shootTimer || 0) + delta;
+            if (e.shootTimer >= 800) {
+              e.state = "DASHING";
+              e.shootTimer = 0;
+            }
+          } else if (e.state === "DASHING") {
+            e.shootTimer = (e.shootTimer || 0) + delta;
+            e.x += e.dashDx * e.speed * 4.5 * (delta / 16.6);
+            e.y += e.dashDy * e.speed * 4.5 * (delta / 16.6);
+            if (e.shootTimer >= 600) {
+              e.state = "NORMAL";
+              e.shootTimer = 0;
+            }
+          }
+        } else if (pat === 1) {
+          // SPIRAL BURST Mode
+          e.shootTimer = (e.shootTimer || 0) + delta;
+          if (e.shootTimer >= 350) {
+            e.shootTimer = 0;
+            e.spiralAngle = (e.spiralAngle || 0) + 0.4;
+            for (let i = 0; i < 4; i++) {
+              const angle = e.spiralAngle + (i * Math.PI) / 2;
+              g.projectiles.push({
+                type: "ACID_BALL",
+                x: e.x,
+                y: e.y,
+                dx: Math.cos(angle),
+                dy: Math.sin(angle),
+                speed: 3.5,
+                size: 11,
+                damage: e.damage * 0.9,
+                color: "#fbbf24", // Golden orange
+                life: 4000,
+              });
+            }
+          }
+          const angle = Math.atan2(dy, dx);
+          e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+          e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+        } else {
+          // SHOCKWAVE SLAM Mode
+          if (e.state === "NORMAL") {
+            e.shootTimer = (e.shootTimer || 0) + delta;
+            if (e.shootTimer >= 2000) {
+              e.state = "SLAM_PREP";
+              e.shootTimer = 0;
+            }
+            const angle = Math.atan2(dy, dx);
+            e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+            e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+          } else if (e.state === "SLAM_PREP") {
+            e.shootTimer = (e.shootTimer || 0) + delta;
+            if (e.shootTimer >= 1000) {
+              e.state = "NORMAL";
+              e.shootTimer = 0;
+              if (dist < 180) {
+                g.player.hp -= e.damage * 1.8;
+                g.screenShake = 12;
+                if (g.player.hp <= 0) {
+                  endGame(false);
+                }
+              }
+              for (let i = 0; i < 36; i++) {
+                const angle = (i * Math.PI * 2) / 36;
+                g.particles.push({
+                  x: e.x,
+                  y: e.y,
+                  dx: Math.cos(angle) * 5.5,
+                  dy: Math.sin(angle) * 5.5,
+                  size: 5,
+                  color: "#fbbf24",
+                  life: 0.7,
+                  decay: 0.02,
+                });
+              }
+            }
+          }
+        }
+      } else if (e.type === "SPITTER" && dist < 140) {
         // Spit acid ball projectiles!
         e.shootTimer = (e.shootTimer || 0) + delta;
         if (e.shootTimer >= 2000) {
@@ -1444,17 +1868,35 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
       }
 
-      // Sync Boss Health Bar
-      if (e.type === "BOSS") {
-        setBossHealth({
-          current: Math.max(0, e.hp),
-          max: e.maxHp,
-          name: "무법 파괴대왕 메카 보스",
-        });
-      }
-
       return true;
     });
+
+    // Sync Boss Health Bar with Priority Check
+    const finalBoss = g.enemies.find((e: any) => e.type === "FINAL_BOSS");
+    const normalBoss = g.enemies.find((e: any) => e.type === "BOSS");
+    const miniBoss = g.enemies.find((e: any) => e.type === "MINI_BOSS");
+
+    if (finalBoss) {
+      setBossHealth({
+        current: Math.max(0, finalBoss.hp),
+        max: finalBoss.maxHp,
+        name: "⚠️ 최종 보스: 오메가 디스트로이어 ⚠️",
+      });
+    } else if (normalBoss) {
+      setBossHealth({
+        current: Math.max(0, normalBoss.hp),
+        max: normalBoss.maxHp,
+        name: "무법 파괴대왕 메카 보스",
+      });
+    } else if (miniBoss) {
+      setBossHealth({
+        current: Math.max(0, miniBoss.hp),
+        max: miniBoss.maxHp,
+        name: miniBoss.name || "정예 미니 보스",
+      });
+    } else {
+      setBossHealth(null);
+    }
 
     // Update enemy acid spitters projectiles
     g.projectiles = g.projectiles.filter((p: any) => {
@@ -1690,6 +2132,109 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
   };
 
+  const forceLevelUp = () => {
+    const g = gameState.current;
+    g.player.level += 1;
+    g.player.maxXp = Math.floor(g.player.maxXp * 1.3) + 15;
+    triggerLevelUpChoices();
+    updateReactHUD();
+  };
+
+  const spawnMiniBoss = (forcedPattern?: "DASH" | "BURST" | "SLAM", isMilestone: boolean = false) => {
+    const g = gameState.current;
+    g.miniBossCount += 1;
+
+    g.screenShake = 8;
+    soundEngine.playBossAlert();
+
+    const spawnAngle = Math.random() * Math.PI * 2;
+    const spawnDist = Math.max(g.dimensions.width, g.dimensions.height) / 2 + 60;
+    const bx = g.player.x + Math.cos(spawnAngle) * spawnDist;
+    const by = g.player.y + Math.sin(spawnAngle) * spawnDist;
+
+    // Pattern type: 0 = DASH, 1 = BURST, 2 = SLAM
+    const patternIndex = g.miniBossCount % 3;
+    let patternType: "DASH" | "BURST" | "SLAM" = forcedPattern || (patternIndex === 0 ? "DASH" : patternIndex === 1 ? "BURST" : "SLAM");
+    
+    let color = "#ec4899"; // pink
+    let name = `정예 화염 돌진 미니보스 (${g.miniBossCount}호)`;
+    let speed = 1.35;
+    let radius = 26;
+    let hp = isMilestone ? 15000 : (3000 + Math.floor(g.player.timeElapsed / 60) * 1500);
+    let damage = 35 + Math.floor(g.player.timeElapsed / 60) * 5;
+
+    if (patternType === "BURST") {
+      color = "#a855f7"; // purple
+      name = `정예 탄막 폭발 미니보스 (${g.miniBossCount}호)`;
+      speed = 1.15;
+      hp = isMilestone ? 25000 : (3000 + Math.floor(g.player.timeElapsed / 60) * 1500);
+    } else if (patternType === "SLAM") {
+      color = "#06b6d4"; // cyan
+      name = `정예 충격파 미니보스 (${g.miniBossCount}호)`;
+      speed = 1.05;
+      radius = 28;
+      hp = isMilestone ? 30000 : (3000 + Math.floor(g.player.timeElapsed / 60) * 1500);
+    }
+
+    if (isMilestone) {
+      if (patternType === "DASH") {
+        name = "🔥 정예 화염 돌진 엘리트 보스 [HP 15000] 🔥";
+      } else if (patternType === "BURST") {
+        name = "🌀 정예 탄막 폭발 엘리트 보스 [HP 25000] 🌀";
+      } else if (patternType === "SLAM") {
+        name = "⚡ 정예 충격파 슬램 엘리트 보스 [HP 30000] ⚡";
+      }
+    }
+
+    g.enemies.push({
+      type: "MINI_BOSS",
+      patternType,
+      state: "NORMAL",
+      patternTimer: 0,
+      shootTimer: 0,
+      name,
+      x: bx,
+      y: by,
+      hp,
+      maxHp: hp,
+      damage,
+      speed,
+      radius,
+      color,
+    });
+  };
+
+  const spawnFinalBoss = () => {
+    const g = gameState.current;
+    g.finalBossSpawned = true;
+    g.finalBossActive = true;
+    g.finalBossTimer = 180; // 3 minutes = 180 seconds
+
+    g.screenShake = 15;
+    soundEngine.playBossAlert();
+
+    const spawnAngle = Math.random() * Math.PI * 2;
+    const spawnDist = Math.max(g.dimensions.width, g.dimensions.height) / 2 + 80;
+    const bx = g.player.x + Math.cos(spawnAngle) * spawnDist;
+    const by = g.player.y + Math.sin(spawnAngle) * spawnDist;
+
+    g.enemies.push({
+      type: "FINAL_BOSS",
+      x: bx,
+      y: by,
+      hp: 50000,
+      maxHp: 50000,
+      damage: 75,
+      speed: 1.1,
+      radius: 45,
+      color: "#fbbf24", // Golden orange
+      shootTimer: 0,
+      patternTimer: 0,
+      currentPattern: 0,
+      name: "⚠️ 최종 보스: 오메가 디스트로이어 ⚠️",
+    });
+  };
+
   const spawnGem = (x: number, y: number, enemyType: string) => {
     const g = gameState.current;
     let type = "XP_BLUE";
@@ -1827,6 +2372,89 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.arc(p.x, p.y, p.radius * (0.95 + Math.sin(p.timer * 0.01) * 0.05), 0, Math.PI * 2);
         ctx.stroke();
       }
+
+      if (p.type === "POOP") {
+        ctx.save();
+        
+        // Draw shadow underneath the poop
+        ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y + p.radius * 0.35, p.radius, p.radius * 0.35, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw stacked circles for poop look
+        if (p.isRainbow) {
+          const baseTime = Date.now() / 150;
+          const hue1 = (baseTime * 40) % 360;
+          const hue2 = (baseTime * 40 + 120) % 360;
+          const hue3 = (baseTime * 40 + 240) % 360;
+
+          ctx.lineWidth = 2.0;
+          ctx.strokeStyle = "#ffffff";
+
+          // Bottom layer
+          ctx.fillStyle = `hsl(${hue1}, 95%, 60%)`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y + p.radius * 0.25, p.radius * 0.8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Middle layer
+          ctx.fillStyle = `hsl(${hue2}, 95%, 65%)`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y - p.radius * 0.15, p.radius * 0.55, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Top layer
+          ctx.fillStyle = `hsl(${hue3}, 95%, 70%)`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y - p.radius * 0.45, p.radius * 0.35, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Sparkles around rainbow poop
+          if (Math.random() < 0.1) {
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            const sparkAngle = Math.random() * Math.PI * 2;
+            const sparkDist = p.radius * (0.6 + Math.random() * 0.5);
+            ctx.arc(p.x + Math.cos(sparkAngle) * sparkDist, p.y + Math.sin(sparkAngle) * sparkDist, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else {
+          const brown1 = "#7c2d12"; // dark reddish brown
+          const brown2 = "#9a3412"; // medium brown
+          const brown3 = "#c2410c"; // light warm brown
+          const outline = "#451a03"; // dark outline
+
+          ctx.lineWidth = 1.8;
+          ctx.strokeStyle = outline;
+
+          // Bottom layer
+          ctx.fillStyle = brown1;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y + p.radius * 0.25, p.radius * 0.8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Middle layer
+          ctx.fillStyle = brown2;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y - p.radius * 0.15, p.radius * 0.55, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Top layer
+          ctx.fillStyle = brown3;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y - p.radius * 0.45, p.radius * 0.35, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
     });
 
     // 4. Draw XP Gems
@@ -1892,6 +2520,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.ellipse(e.x, e.y + e.radius - 2, e.radius * 0.9, e.radius * 0.3, 0, 0, Math.PI * 2);
       ctx.fill();
 
+      // If charging or preparing slam, draw warning radius and dash vector line
+      if (e.state === "CHARGING" || e.state === "SLAM_PREP") {
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.6)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius * 2 + Math.sin(Date.now() / 40) * 6, 0, Math.PI * 2);
+        ctx.stroke();
+
+        if (e.patternType === "DASH" && e.dashDx !== undefined) {
+          ctx.strokeStyle = "rgba(239, 68, 68, 0.45)";
+          ctx.lineWidth = 3.5;
+          ctx.setLineDash([6, 6]);
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y);
+          ctx.lineTo(e.x + e.dashDx * 240, e.y + e.dashDy * 240);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+
+      // Draw shiny ring for elite bosses
+      if (e.type === "MINI_BOSS" || e.type === "FINAL_BOSS") {
+        ctx.strokeStyle = e.type === "FINAL_BOSS" ? "#fbbf24" : e.color;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius + 7 + Math.sin(Date.now() / 80) * 3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
       // Body core
       ctx.fillStyle = e.color;
       ctx.beginPath();
@@ -1917,7 +2576,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.fill();
 
       // Health bar above hard/elite enemies
-      if (e.hp < e.maxHp && e.type !== "BOSS") {
+      if (e.hp < e.maxHp && e.type !== "BOSS" && e.type !== "FINAL_BOSS") {
         const barW = e.radius * 1.5;
         const barH = 3.5;
         const barX = e.x - barW / 2;
@@ -2142,6 +2801,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   return (
     <div ref={containerRef} className="relative w-full h-full select-none">
       <canvas ref={canvasRef} className="block w-full h-full cursor-none select-none" />
+
+      {/* Final Boss Countdown Timer */}
+      {finalBossTimeLeft !== null && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-rose-950/95 border border-rose-500/40 px-4 py-1.5 rounded-full text-xs font-black text-rose-200 tracking-wider shadow-lg animate-pulse flex items-center space-x-2 pointer-events-none">
+          <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+          <span>최종보스 처치 제한시간: {Math.floor(finalBossTimeLeft / 60)}분 {(finalBossTimeLeft % 60).toString().padStart(2, "0")}초</span>
+        </div>
+      )}
 
       {/* Top HUD: Time, Kills, XP progress bar */}
       <div className="absolute top-4 left-4 right-4 z-30 pointer-events-none select-none font-sans flex flex-col space-y-2">

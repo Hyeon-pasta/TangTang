@@ -5,6 +5,7 @@ export enum WeaponType {
   MOLOTOV = "MOLOTOV", // Puddles of fire
   LIGHTNING = "LIGHTNING", // Lightning bolts from above
   GATLING = "GATLING", // Super rapid fire tracer bullets
+  POOP_SPRAY = "POOP_SPRAY", // Character leaves a trail of poop behind them
 }
 
 export enum PassiveType {
