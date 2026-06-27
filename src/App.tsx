@@ -150,6 +150,8 @@ export default function App() {
     setGameOverStats(null);
     setJoystickAngle(null);
     setJoystickForce(0);
+    setEquippedWeapons([]);
+    setEquippedPassives([]);
     setCurrentScreen("GAME");
     setGameId((prev) => prev + 1);
   };
@@ -263,6 +265,10 @@ export default function App() {
                 levelUpSelectedCard={levelUpSelectedCard}
                 setLevelUpSelectedCard={setLevelUpSelectedCard}
                 isEndlessMode={true}
+                equippedWeapons={equippedWeapons}
+                setEquippedWeapons={setEquippedWeapons}
+                equippedPassives={equippedPassives}
+                setEquippedPassives={setEquippedPassives}
               />
 
               {/* On-screen touch virtual joystick controller */}
@@ -273,6 +279,8 @@ export default function App() {
             {levelUpChoices && !gameOverStats && (
               <LevelUpChooser
                 cards={levelUpChoices}
+                equippedWeapons={equippedWeapons}
+                equippedPassives={equippedPassives}
                 onSelectCard={(card) => {
                   setLevelUpSelectedCard(card);
                   setLevelUpChoices(null);

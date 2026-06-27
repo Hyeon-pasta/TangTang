@@ -38,6 +38,10 @@ interface GameCanvasProps {
   levelUpSelectedCard: UpgradeCard | null;
   setLevelUpSelectedCard: (card: UpgradeCard | null) => void;
   isEndlessMode: boolean;
+  equippedWeapons: { id: WeaponType; level: number; isEvo: boolean }[];
+  setEquippedWeapons: React.Dispatch<React.SetStateAction<{ id: WeaponType; level: number; isEvo: boolean }[]>>;
+  equippedPassives: { id: PassiveType; level: number }[];
+  setEquippedPassives: React.Dispatch<React.SetStateAction<{ id: PassiveType; level: number }[]>>;
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -51,6 +55,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   levelUpSelectedCard,
   setLevelUpSelectedCard,
   isEndlessMode,
+  equippedWeapons,
+  setEquippedWeapons,
+  equippedPassives,
+  setEquippedPassives,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -63,8 +71,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [inGameMaxHP, setInGameMaxHP] = useState(100);
   const [inGameKills, setInGameKills] = useState(0);
   const [inGameTime, setInGameTime] = useState(0);
-  const [equippedWeapons, setEquippedWeapons] = useState<{ id: WeaponType; level: number; isEvo: boolean }[]>([]);
-  const [equippedPassives, setEquippedPassives] = useState<{ id: PassiveType; level: number }[]>([]);
   const [inGameGold, setInGameGold] = useState(0);
 
   // In-game Equipment Reinforcement states
@@ -141,6 +147,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     camera: { x: 0, y: 0 },
     dimensions: { width: 400, height: 600 },
     activeWeaponEvolutions: {} as Record<WeaponType, boolean>,
+    nextBossSpawnTime: 60,
     bossSpawned: false,
     bossDefeated: false,
     finalBossSpawned: false,
@@ -264,6 +271,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         [WeaponType.GATLING]: false,
         [WeaponType.POOP_SPRAY]: false,
       },
+      nextBossSpawnTime: 60,
       bossSpawned: false,
       bossDefeated: false,
       finalBossSpawned: false,
@@ -826,16 +834,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         g.player.gold += Math.floor(10 * goldMultiplier);
       }
 
-      // Check for BOSS spawning: 60s for normal mode, every 120s (60, 180, 300, 420, ...) for endless mode
-      if (isEndlessMode) {
-        if (g.player.timeElapsed > 0 && g.player.timeElapsed % 120 === 60 && g.player.timeElapsed < 600) {
-          if (g.enemies.filter(e => e.type === "BOSS").length === 0) {
-            spawnBoss();
-          }
-        }
-      } else {
-        if (g.player.timeElapsed === 60 && !g.bossSpawned) {
+      // Check for BOSS spawning: robustly spawn every 120s (60, 180, 300, 420, 540) if none is alive on screen
+      if (g.player.timeElapsed >= g.nextBossSpawnTime && g.player.timeElapsed < 600) {
+        if (g.enemies.filter(e => e.type === "BOSS").length === 0) {
           spawnBoss();
+          g.nextBossSpawnTime += 120;
         }
       }
 
@@ -1535,10 +1538,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           } else if (g.player.kills >= 7500 && !g.spawnedSlamBoss) {
             g.spawnedSlamBoss = true;
             spawnMiniBoss("SLAM", true);
-          } else if (g.player.kills >= g.nextMiniBossKills) {
-            spawnMiniBoss();
-            g.nextMiniBossKills += g.miniBossKillIncrement;
-            g.miniBossKillIncrement += 50;
           }
         }
 
@@ -1547,6 +1546,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           setBossHealth(null);
           g.particles.push(...createExplosion(e.x, e.y, "#eab308", 40));
           soundEngine.playBossAlert();
+          forceLevelUp(); // Level up 1 level as reward!
           // Spawn mega chest (Red Magnet powerup)
           g.gems.push({
             x: e.x,
@@ -1560,7 +1560,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (e.type === "MINI_BOSS") {
           g.particles.push(...createExplosion(e.x, e.y, e.color, 30));
           soundEngine.playLevelUp(); // play level up chime
-          forceLevelUp(); // immediately level up 1 level!
+          upgradeRandomOwnedWeapon(); // upgrade 1 of currently held active weapon levels!
           
           // Drop a gold bag on defeat
           g.gems.push({
@@ -2137,6 +2137,58 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     g.player.level += 1;
     g.player.maxXp = Math.floor(g.player.maxXp * 1.3) + 15;
     triggerLevelUpChoices();
+    updateReactHUD();
+  };
+
+  const upgradeRandomOwnedWeapon = () => {
+    const g = gameState.current;
+    const ownedWeaponKeys = (Object.keys(g.skills.weapons) as WeaponType[]).filter(key => {
+      const w = g.skills.weapons[key];
+      return w && w.level < 5 && !w.isEvo;
+    });
+
+    if (ownedWeaponKeys.length > 0) {
+      const randomKey = ownedWeaponKeys[Math.floor(Math.random() * ownedWeaponKeys.length)];
+      const weapon = g.skills.weapons[randomKey];
+      if (weapon) {
+        weapon.level += 1;
+        
+        const weaponNames: Record<WeaponType, string> = {
+          [WeaponType.KUNAI]: "쿠나이",
+          [WeaponType.SOCCER_BALL]: "축구공",
+          [WeaponType.GUARDIAN]: "수호자",
+          [WeaponType.MOLOTOV]: "화염병",
+          [WeaponType.LIGHTNING]: "번개 발사기",
+          [WeaponType.GATLING]: "전설의 개틀링건",
+          [WeaponType.POOP_SPRAY]: "똥 뿌리기",
+        };
+        const name = weaponNames[randomKey] || randomKey;
+        g.particles.push(...createLevelUpSparkles(g.player.x, g.player.y));
+        
+        g.damageTexts.push({
+          x: g.player.x,
+          y: g.player.y - 40,
+          text: `🔥 ${name} Lvl ${weapon.level} 자동 강화!`,
+          color: "#22d3ee",
+          life: 2.0,
+          size: 16,
+          isCritical: true,
+        });
+        soundEngine.playLevelUp();
+      }
+    } else {
+      g.player.gold += 300;
+      g.damageTexts.push({
+        x: g.player.x,
+        y: g.player.y - 40,
+        text: `💰 모든 무기 최고 레벨! +300골드`,
+        color: "#fbbf24",
+        life: 2.0,
+        size: 14,
+        isCritical: false,
+      });
+      soundEngine.playGem();
+    }
     updateReactHUD();
   };
 
@@ -2997,6 +3049,169 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
 
     ctx.restore(); // Restore shake offset
+
+    // 10. Draw Off-screen Boss indicators in Screen Space
+    const W = g.dimensions.width;
+    const H = g.dimensions.height;
+
+    // Player screen position
+    const px = g.player.x - g.camera.x;
+    const py = g.player.y - g.camera.y;
+
+    g.enemies.forEach((e: any) => {
+      const isBoss = e.type === "BOSS" || e.type === "MINI_BOSS" || e.type === "FINAL_BOSS";
+      if (!isBoss) return;
+
+      // Boss screen position
+      const bx = e.x - g.camera.x;
+      const by = e.y - g.camera.y;
+
+      // Margin from screen borders
+      const margin = 28;
+
+      // Check if Boss is off-screen (with margin)
+      const isOffScreen = bx < margin || bx > W - margin || by < margin || by > H - margin;
+
+      if (isOffScreen) {
+        // Calculate vector from player to boss
+        const dx = bx - px;
+        const dy = by - py;
+        const angle = Math.atan2(dy, dx);
+
+        // Find intersection point on the screen margin boundaries
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        let tX = Infinity;
+        let tY = Infinity;
+
+        if (cos > 0) {
+          tX = (W - margin - px) / cos;
+        } else if (cos < 0) {
+          tX = (margin - px) / cos;
+        }
+
+        if (sin > 0) {
+          tY = (H - margin - py) / sin;
+        } else if (sin < 0) {
+          tY = (margin - py) / sin;
+        }
+
+        const t = Math.min(tX, tY);
+        const edgeX = px + cos * t;
+        const edgeY = py + sin * t;
+
+        // Draw indicator arrow
+        ctx.save();
+        ctx.translate(edgeX, edgeY);
+        ctx.rotate(angle);
+
+        // Arrow style based on boss type
+        // The strength order: BOSS (weakest) < MINI_BOSS (medium) < FINAL_BOSS (strongest)
+        let mainColor = "#eab308"; // BOSS: Golden Yellow
+        let label = "BOSS";
+        let arrowStyle = "standard";
+
+        if (e.type === "FINAL_BOSS") {
+          mainColor = "#ef4444"; // FINAL_BOSS: Crimson Red
+          arrowStyle = "triple-chevron";
+          label = "⚠️ FINAL ⚠️";
+        } else if (e.type === "MINI_BOSS") {
+          // MINI_BOSS: Neon Pink/Magenta/Purple
+          mainColor = e.color || "#ec4899";
+          arrowStyle = "double-chevron";
+          label = "ELITE";
+        }
+
+        // Draw glowing aura / base circle
+        ctx.shadowColor = mainColor;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+        ctx.strokeStyle = mainColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Reset shadow for the nested elements to keep them crisp
+        ctx.shadowBlur = 0;
+
+        // Draw Arrowhead pointing outwards (pointing to the right in the rotated space)
+        ctx.fillStyle = mainColor;
+        ctx.beginPath();
+        if (arrowStyle === "standard") {
+          // Medium single triangle pointing right (rotated towards boss)
+          ctx.moveTo(8, 0);
+          ctx.lineTo(-4, -6);
+          ctx.lineTo(-1, 0);
+          ctx.lineTo(-4, 6);
+        } else if (arrowStyle === "double-chevron") {
+          // Double triangle chevrons pointing right
+          ctx.moveTo(9, 0);
+          ctx.lineTo(1, -7);
+          ctx.lineTo(4, 0);
+          ctx.lineTo(1, 7);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.moveTo(2, 0);
+          ctx.lineTo(-6, -7);
+          ctx.lineTo(-3, 0);
+          ctx.lineTo(-6, 7);
+        } else if (arrowStyle === "triple-chevron") {
+          // Heavy triple chevron pointing right (extremely dangerous look)
+          ctx.moveTo(11, 0);
+          ctx.lineTo(4, -8);
+          ctx.lineTo(7, 0);
+          ctx.lineTo(4, 8);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.moveTo(5, 0);
+          ctx.lineTo(-2, -8);
+          ctx.lineTo(1, 0);
+          ctx.lineTo(-2, 8);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.moveTo(-1, 0);
+          ctx.lineTo(-8, -8);
+          ctx.lineTo(-5, 0);
+          ctx.lineTo(-8, 8);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+
+        // Draw small text label above or below the arrow in non-rotated screen-space
+        ctx.save();
+        ctx.font = `bold 9px "JetBrains Mono", monospace`;
+        ctx.fillStyle = mainColor;
+        ctx.textAlign = "center";
+        ctx.shadowColor = "#000";
+        ctx.shadowBlur = 4;
+        
+        // Calculate offset for text based on position
+        let textOffsetY = 24;
+        if (edgeY > H - 40) {
+          textOffsetY = -24; // Draw above if at the bottom of the screen
+        }
+        ctx.fillText(label, edgeX, edgeY + textOffsetY);
+
+        // Distance indicator to boss
+        const distPx = Math.round(Math.hypot(e.x - g.player.x, e.y - g.player.y));
+        ctx.fillStyle = "#cbd5e1"; // light slate gray
+        ctx.font = `bold 8px "JetBrains Mono", monospace`;
+        ctx.fillText(`${distPx}m`, edgeX, edgeY + textOffsetY + (textOffsetY > 0 ? 9 : -9));
+
+        ctx.restore();
+      }
+    });
   };
 
   return (
@@ -3161,6 +3376,86 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               <span className="text-sm font-black text-amber-400 font-mono">
                 ₩ {inGameGold.toLocaleString()}
               </span>
+            </div>
+
+            {/* Currently Possessed Abilities Panel (Compact version inside reinforcement modal) */}
+            <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5 mb-3 space-y-2 shadow-inner text-left shrink-0">
+              <div className="flex items-center justify-between text-[9px] font-black tracking-wider uppercase">
+                <span className="text-slate-400">💼 현재 보유한 장비 및 무기</span>
+                <span className="text-emerald-400 font-mono text-[10px]">
+                  {equippedWeapons.length + equippedPassives.length}/12
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {/* Weapons Group */}
+                <div className="space-y-1">
+                  <div className="text-[8px] font-extrabold text-sky-400 border-b border-sky-950/50 pb-0.5 uppercase tracking-wider">무기 슬롯 ({equippedWeapons.length}/6)</div>
+                  <div className="grid grid-cols-6 gap-0.5">
+                    {Array.from({ length: 6 }).map((_, idx) => {
+                      const weapon = equippedWeapons[idx];
+                      return (
+                        <div
+                          key={`eq-w-re-${idx}`}
+                          className={`aspect-square rounded border flex flex-col items-center justify-center relative ${
+                            weapon 
+                              ? weapon.isEvo 
+                                ? "bg-amber-950/40 border-amber-500/50" 
+                                : "bg-slate-950 border-sky-900" 
+                              : "bg-slate-950/30 border-slate-900/40 border-dashed"
+                          }`}
+                        >
+                          {weapon ? (
+                            <>
+                              {renderSkillIcon(weapon.id, "w-3 h-3")}
+                              <span className={`absolute -bottom-0.5 -right-0.5 text-[6px] font-mono font-black px-0.5 rounded-[1px] border ${
+                                weapon.isEvo 
+                                  ? "bg-amber-500 border-amber-400 text-slate-950 scale-75" 
+                                  : "bg-slate-800 border-slate-700 text-slate-300 scale-75"
+                              }`}>
+                                {weapon.isEvo ? "E" : `${weapon.level}`}
+                              </span>
+                            </>
+                          ) : (
+                            <div className="w-1 h-1 rounded-full bg-slate-800/40" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Passives Group */}
+                <div className="space-y-1">
+                  <div className="text-[8px] font-extrabold text-emerald-400 border-b border-emerald-950/50 pb-0.5 uppercase tracking-wider">지원 장비 ({equippedPassives.length}/6)</div>
+                  <div className="grid grid-cols-6 gap-0.5">
+                    {Array.from({ length: 6 }).map((_, idx) => {
+                      const passive = equippedPassives[idx];
+                      return (
+                        <div
+                          key={`eq-p-re-${idx}`}
+                          className={`aspect-square rounded border flex flex-col items-center justify-center relative ${
+                            passive 
+                              ? "bg-slate-950 border-emerald-900" 
+                              : "bg-slate-950/30 border-slate-900/40 border-dashed"
+                          }`}
+                        >
+                          {passive ? (
+                            <>
+                              {renderSkillIcon(passive.id, "w-3 h-3")}
+                              <span className="absolute -bottom-0.5 -right-0.5 text-[6px] font-mono font-black px-0.5 rounded-[1px] border bg-slate-800 border-slate-700 text-emerald-400 scale-75">
+                                {passive.level}
+                              </span>
+                            </>
+                          ) : (
+                            <div className="w-1 h-1 rounded-full bg-slate-800/40" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Reinforcement Slots List */}
