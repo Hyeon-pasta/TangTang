@@ -2126,7 +2126,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       maxHp: bossHp,
       damage: bossDamage,
       speed: 1.4,
-      radius: 36,
+      radius: 54,
       color: "#eab308", // Golden Yellow
       shootTimer: 0,
     });
@@ -2159,7 +2159,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     let color = "#ec4899"; // pink
     let name = `정예 화염 돌진 미니보스 (${g.miniBossCount}호)`;
     let speed = 1.35;
-    let radius = 26;
+    let radius = 42;
     let hp = isMilestone ? 15000 : (3000 + Math.floor(g.player.timeElapsed / 60) * 1500);
     let damage = 35 + Math.floor(g.player.timeElapsed / 60) * 5;
 
@@ -2167,12 +2167,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       color = "#a855f7"; // purple
       name = `정예 탄막 폭발 미니보스 (${g.miniBossCount}호)`;
       speed = 1.15;
+      radius = 46;
       hp = isMilestone ? 25000 : (3000 + Math.floor(g.player.timeElapsed / 60) * 1500);
     } else if (patternType === "SLAM") {
       color = "#06b6d4"; // cyan
       name = `정예 충격파 미니보스 (${g.miniBossCount}호)`;
       speed = 1.05;
-      radius = 28;
+      radius = 52;
       hp = isMilestone ? 30000 : (3000 + Math.floor(g.player.timeElapsed / 60) * 1500);
     }
 
@@ -2226,7 +2227,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       maxHp: 50000,
       damage: 75,
       speed: 1.1,
-      radius: 45,
+      radius: 80,
       color: "#fbbf24", // Golden orange
       shootTimer: 0,
       patternTimer: 0,
@@ -2540,40 +2541,240 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
       }
 
-      // Draw shiny ring for elite bosses
-      if (e.type === "MINI_BOSS" || e.type === "FINAL_BOSS") {
-        ctx.strokeStyle = e.type === "FINAL_BOSS" ? "#fbbf24" : e.color;
-        ctx.lineWidth = 3;
-        ctx.setLineDash([5, 5]);
+      const isAnyBoss = e.type === "BOSS" || e.type === "MINI_BOSS" || e.type === "FINAL_BOSS";
+
+      if (isAnyBoss) {
+        ctx.save();
+        
+        // 1. Draw Outer Glowing Aura
+        const pulse = Math.sin(Date.now() / 150) * 5;
+        const auraRadius = e.radius * 1.45 + pulse;
+        const auraGrd = ctx.createRadialGradient(e.x, e.y, e.radius * 0.8, e.x, e.y, auraRadius);
+        
+        let auraColorStart = "rgba(239, 68, 68, 0.4)"; // default red
+        let auraColorEnd = "rgba(239, 68, 68, 0)";
+        if (e.type === "FINAL_BOSS") {
+          auraColorStart = "rgba(251, 191, 36, 0.5)"; // gold/yellow
+          auraColorEnd = "rgba(239, 68, 68, 0)";
+        } else if (e.type === "MINI_BOSS") {
+          if (e.patternType === "BURST") {
+            auraColorStart = "rgba(168, 85, 247, 0.45)"; // purple
+            auraColorEnd = "rgba(168, 85, 247, 0)";
+          } else if (e.patternType === "SLAM") {
+            auraColorStart = "rgba(6, 182, 212, 0.45)"; // cyan
+            auraColorEnd = "rgba(6, 182, 212, 0)";
+          } else {
+            auraColorStart = "rgba(236, 72, 153, 0.45)"; // pink
+            auraColorEnd = "rgba(236, 72, 153, 0)";
+          }
+        } else if (e.type === "BOSS") {
+          auraColorStart = "rgba(234, 179, 8, 0.45)"; // yellow
+          auraColorEnd = "rgba(234, 179, 8, 0)";
+        }
+
+        auraGrd.addColorStop(0, auraColorStart);
+        auraGrd.addColorStop(1, auraColorEnd);
+        ctx.fillStyle = auraGrd;
         ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius + 7 + Math.sin(Date.now() / 80) * 3, 0, Math.PI * 2);
+        ctx.arc(e.x, e.y, auraRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2. Draw rotating spikes (flames/crown)
+        const numSpikes = e.type === "FINAL_BOSS" ? 12 : 8;
+        const rotationSpeed = e.type === "FINAL_BOSS" ? 0.0006 : 0.0012;
+        const baseAngle = Date.now() * rotationSpeed;
+        
+        for (let i = 0; i < numSpikes; i++) {
+          const angle = (i * Math.PI * 2) / numSpikes + baseAngle;
+          const spikeLen = e.radius * (e.type === "FINAL_BOSS" ? 0.32 : 0.24);
+          const spikeX1 = e.x + Math.cos(angle - 0.18) * e.radius;
+          const spikeY1 = e.y + Math.sin(angle - 0.18) * e.radius;
+          const spikeX2 = e.x + Math.cos(angle + 0.18) * e.radius;
+          const spikeY2 = e.y + Math.sin(angle + 0.18) * e.radius;
+          
+          // Outer tip with dynamic breathing animation
+          const tipDist = e.radius + spikeLen + Math.sin(Date.now() / 120 + i) * 3;
+          const tipX = e.x + Math.cos(angle) * tipDist;
+          const tipY = e.y + Math.sin(angle) * tipDist;
+
+          ctx.fillStyle = e.color;
+          ctx.strokeStyle = "rgba(15, 23, 42, 0.8)";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(spikeX1, spikeY1);
+          ctx.lineTo(tipX, tipY);
+          ctx.lineTo(spikeX2, spikeY2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        // 3. Spinning Outer Ring / Shield Orbits
+        ctx.strokeStyle = e.color;
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([8, 8]);
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius + 10 + Math.sin(Date.now() / 100) * 4, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        // For final boss, draw double spinning orbital shield rings & orbiting smaller crystals
+        if (e.type === "FINAL_BOSS") {
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 12]);
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.radius + 22, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // 4 small spinning dark energy orbs around final boss
+          const numOrbs = 4;
+          const orbOrbitRadius = e.radius + 32;
+          const orbAngleBase = Date.now() * 0.002;
+          for (let j = 0; j < numOrbs; j++) {
+            const orbAngle = (j * Math.PI * 2) / numOrbs + orbAngleBase;
+            const orbX = e.x + Math.cos(orbAngle) * orbOrbitRadius;
+            const orbY = e.y + Math.sin(orbAngle) * orbOrbitRadius;
+
+            // Orb Shadow
+            ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+            ctx.beginPath();
+            ctx.arc(orbX, orbY + 4, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Orb Core
+            ctx.fillStyle = "#ec4899"; // Dark pink energy crystal
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(orbX, orbY, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+
+        // 4. Main Body Core (using a beautiful radial gradient to look 3D)
+        const bodyGrd = ctx.createRadialGradient(
+          e.x - e.radius * 0.2,
+          e.y - e.radius * 0.2,
+          e.radius * 0.1,
+          e.x,
+          e.y,
+          e.radius
+        );
+        bodyGrd.addColorStop(0, "#ffffff"); // high-contrast shine
+        bodyGrd.addColorStop(0.2, e.color);
+        bodyGrd.addColorStop(1, "#0f172a"); // deep shadow edge
+
+        ctx.fillStyle = bodyGrd;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Outward thick stroke for high contrast
+        ctx.strokeStyle = "#0f172a";
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+
+        // 5. Demonic Angry Eyes with Glowing trail
+        // Angry Eyebrows
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 4;
+        ctx.lineCap = "round";
+
+        // Left Eyebrow
+        ctx.beginPath();
+        ctx.moveTo(e.x - e.radius * 0.45, e.y - e.radius * 0.38);
+        ctx.lineTo(e.x - e.radius * 0.1, e.y - e.radius * 0.22);
+        ctx.stroke();
+
+        // Right Eyebrow
+        ctx.beginPath();
+        ctx.moveTo(e.x + e.radius * 0.45, e.y - e.radius * 0.38);
+        ctx.lineTo(e.x + e.radius * 0.1, e.y - e.radius * 0.22);
+        ctx.stroke();
+
+        // Left glowing red/yellow eye
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath();
+        ctx.ellipse(e.x - e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.16, e.radius * 0.08, -Math.PI / 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Right glowing red/yellow eye
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath();
+        ctx.ellipse(e.x + e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.16, e.radius * 0.08, Math.PI / 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eye Pupils (glowing white slits)
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.ellipse(e.x - e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.04, e.radius * 0.08, -Math.PI / 10, 0, Math.PI * 2);
+        ctx.ellipse(e.x + e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.04, e.radius * 0.08, Math.PI / 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Demonic mouth (cruel grin)
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 3;
+        ctx.fillStyle = "#000000";
+        ctx.beginPath();
+        ctx.arc(e.x, e.y + e.radius * 0.25, e.radius * 0.25, 0, Math.PI, false);
+        ctx.stroke();
+
+        // Teeth inside the mouth for final boss
+        if (e.type === "FINAL_BOSS") {
+          ctx.fillStyle = "#ffffff";
+          // Draw simple little sharp white triangles for teeth
+          const drawTooth = (tx: number, ty: number, tSize: number, up: boolean) => {
+            ctx.beginPath();
+            ctx.moveTo(tx - tSize / 2, ty);
+            ctx.lineTo(tx + tSize / 2, ty);
+            ctx.lineTo(tx, up ? ty + tSize : ty - tSize);
+            ctx.closePath();
+            ctx.fill();
+          };
+          drawTooth(e.x - 8, e.y + e.radius * 0.25, 6, true);
+          drawTooth(e.x + 8, e.y + e.radius * 0.25, 6, true);
+        }
+
+        ctx.restore();
+      } else {
+        // Draw shiny ring for elite bosses
+        if (e.type === "MINI_BOSS" || e.type === "FINAL_BOSS") {
+          ctx.strokeStyle = e.type === "FINAL_BOSS" ? "#fbbf24" : e.color;
+          ctx.lineWidth = 3;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.radius + 7 + Math.sin(Date.now() / 80) * 3, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // Body core
+        ctx.fillStyle = e.color;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Outward stroke
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Angry Eyes representation
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(e.x - e.radius * 0.3, e.y - e.radius * 0.2, e.radius * 0.18, 0, Math.PI * 2);
+        ctx.arc(e.x + e.radius * 0.3, e.y - e.radius * 0.2, e.radius * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#000000";
+        ctx.beginPath();
+        ctx.arc(e.x - e.radius * 0.26, e.y - e.radius * 0.18, e.radius * 0.08, 0, Math.PI * 2);
+        ctx.arc(e.x + e.radius * 0.34, e.y - e.radius * 0.18, e.radius * 0.08, 0, Math.PI * 2);
+        ctx.fill();
       }
-
-      // Body core
-      ctx.fillStyle = e.color;
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Outward stroke
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // Angry Eyes representation
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.arc(e.x - e.radius * 0.3, e.y - e.radius * 0.2, e.radius * 0.18, 0, Math.PI * 2);
-      ctx.arc(e.x + e.radius * 0.3, e.y - e.radius * 0.2, e.radius * 0.18, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = "#000000";
-      ctx.beginPath();
-      ctx.arc(e.x - e.radius * 0.26, e.y - e.radius * 0.18, e.radius * 0.08, 0, Math.PI * 2);
-      ctx.arc(e.x + e.radius * 0.34, e.y - e.radius * 0.18, e.radius * 0.08, 0, Math.PI * 2);
-      ctx.fill();
 
       // Health bar above hard/elite enemies
       if (e.hp < e.maxHp && e.type !== "BOSS" && e.type !== "FINAL_BOSS") {
@@ -2889,17 +3090,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       {/* BOSS HEALTH INDICATOR BAR (shown on screen top-center if boss is active) */}
       {bossHealth && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-md px-4 animate-scale-up">
-          <div className="bg-red-950/80 border-2 border-red-500/30 p-2.5 rounded-2xl backdrop-blur-md shadow-2xl flex flex-col space-y-1.5">
-            <div className="flex justify-between items-center text-[10px] text-red-200 font-black tracking-wide uppercase">
-              <span>⚠️ {bossHealth.name} ⚠️</span>
-              <span className="font-mono text-xs">{bossHealth.current.toLocaleString()}</span>
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-lg px-4 animate-scale-up">
+          <div className="bg-slate-950/90 border border-red-500/40 p-3 rounded-2xl backdrop-blur-md shadow-[0_0_20px_rgba(239,68,68,0.25)] flex flex-col space-y-1.5">
+            <div className="flex justify-between items-center text-xs text-red-200 font-extrabold tracking-wide">
+              <span className="flex items-center space-x-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-ping mr-1" />
+                <span>{bossHealth.name}</span>
+              </span>
+              <span className="font-mono text-sm bg-red-500/10 border border-red-500/20 px-2.5 py-0.5 rounded-lg text-red-400 font-black">
+                {bossHealth.current.toLocaleString()} / {bossHealth.max.toLocaleString()}
+              </span>
             </div>
-            <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden p-0.5 flex">
+            <div className="relative w-full h-3.5 bg-slate-900 border border-slate-800 rounded-full overflow-hidden p-0.5 flex">
+              {/* Slow-catchup trailing damage bar */}
               <div
-                className="h-full rounded-full bg-gradient-to-r from-red-600 via-orange-500 to-yellow-400 transition-all duration-75 shadow-lg"
+                className="absolute top-0.5 left-0.5 bottom-0.5 rounded-full bg-red-400/40 transition-all duration-500 ease-out"
+                style={{ width: `calc(${(bossHealth.current / bossHealth.max) * 100}% - 4px)` }}
+              />
+              {/* Main health bar */}
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-red-600 via-orange-500 to-yellow-400 transition-all duration-100 shadow-[0_0_10px_rgba(239,68,68,0.4)]"
                 style={{ width: `${(bossHealth.current / bossHealth.max) * 100}%` }}
               />
+            </div>
+            {/* Health Percentage indicator */}
+            <div className="flex justify-center">
+              <span className="text-[10px] text-red-400/80 font-mono font-bold tracking-widest uppercase">
+                HEALTH CAPACITY: {Math.max(0, Math.ceil((bossHealth.current / bossHealth.max) * 100))}%
+              </span>
             </div>
           </div>
         </div>
