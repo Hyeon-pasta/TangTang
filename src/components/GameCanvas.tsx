@@ -44,6 +44,193 @@ interface GameCanvasProps {
   setEquippedPassives: React.Dispatch<React.SetStateAction<{ id: PassiveType; level: number }[]>>;
 }
 
+const drawZombieHead = (ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, isDark: boolean) => {
+  ctx.save();
+
+  // Determine colors based on isDark state
+  const baseGreen = isDark ? "#2f3e23" : "#8ac959"; // main head color (funny light green)
+  const darkGreen = isDark ? "#1f2a17" : "#5d9632"; // shadow and outline color
+  const mouthInside = isDark ? "#1f0909" : "#450a0a"; // dark red inside mouth
+  const toothColor = isDark ? "#78716c" : "#fef08a";  // yellowish teeth
+  const scarColor = isDark ? "#1f2937" : "#78350f";   // stitched scar color
+
+  // 1. DRAW EARS (Left and Right)
+  // Left ear
+  ctx.fillStyle = baseGreen;
+  ctx.strokeStyle = darkGreen;
+  ctx.lineWidth = radius * 0.08;
+  ctx.beginPath();
+  ctx.arc(x - radius * 1.0, y, radius * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Left ear inner detail
+  ctx.strokeStyle = darkGreen;
+  ctx.lineWidth = radius * 0.04;
+  ctx.beginPath();
+  ctx.arc(x - radius * 1.0, y, radius * 0.08, 0, Math.PI, false);
+  ctx.stroke();
+
+  // Right ear
+  ctx.fillStyle = baseGreen;
+  ctx.strokeStyle = darkGreen;
+  ctx.lineWidth = radius * 0.08;
+  ctx.beginPath();
+  ctx.arc(x + radius * 1.0, y, radius * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Right ear inner detail
+  ctx.beginPath();
+  ctx.arc(x + radius * 1.0, y, radius * 0.08, 0, Math.PI, false);
+  ctx.stroke();
+
+  // 2. DRAW MAIN HEAD BODY
+  ctx.fillStyle = baseGreen;
+  ctx.strokeStyle = darkGreen;
+  ctx.lineWidth = radius * 0.08;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 3. FOREHEAD SPOTS & WRINKLES
+  // Draw 3 subtle spots on top right
+  ctx.fillStyle = darkGreen;
+  ctx.beginPath();
+  ctx.arc(x + radius * 0.45, y - radius * 0.65, radius * 0.06, 0, Math.PI * 2);
+  ctx.arc(x + radius * 0.58, y - radius * 0.6, radius * 0.05, 0, Math.PI * 2);
+  ctx.arc(x + radius * 0.5, y - radius * 0.5, radius * 0.04, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 4. FOREHEAD STITCHED SCAR (top-left)
+  ctx.strokeStyle = scarColor;
+  ctx.lineWidth = radius * 0.06;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  // Curved scar line
+  ctx.arc(x - radius * 0.35, y - radius * 0.5, radius * 0.3, Math.PI * 1.2, Math.PI * 1.8);
+  ctx.stroke();
+
+  // Stitch marks crossing the scar
+  ctx.lineWidth = radius * 0.04;
+  const numStitches = 4;
+  for (let i = 0; i < numStitches; i++) {
+    const t = i / (numStitches - 1);
+    // Interpolate along the curve of the scar (from left to right)
+    const angle = Math.PI * 1.2 + (Math.PI * 0.6) * t;
+    const sx = x - radius * 0.35 + Math.cos(angle) * radius * 0.3;
+    const sy = y - radius * 0.5 + Math.sin(angle) * radius * 0.3;
+    // Perpendicular vector for the stitch cross line
+    const px = Math.cos(angle);
+    const py = Math.sin(angle);
+    
+    ctx.beginPath();
+    ctx.moveTo(sx - px * radius * 0.08, sy - py * radius * 0.08);
+    ctx.lineTo(sx + px * radius * 0.08, sy + py * radius * 0.08);
+    ctx.stroke();
+  }
+
+  // Forehead furrow line (brow wrinkle in middle)
+  ctx.strokeStyle = darkGreen;
+  ctx.lineWidth = radius * 0.04;
+  ctx.beginPath();
+  ctx.moveTo(x - radius * 0.2, y - radius * 0.35);
+  ctx.quadraticCurveTo(x, y - radius * 0.42, x + radius * 0.2, y - radius * 0.35);
+  ctx.stroke();
+
+  // 5. EYES
+  // Left eye (Goofy, round)
+  const eyeOutlineColor = isDark ? "#111827" : "#2d4a1a";
+  ctx.fillStyle = isDark ? "#4b5563" : "#ffffff";
+  ctx.strokeStyle = eyeOutlineColor;
+  ctx.lineWidth = radius * 0.07;
+  ctx.beginPath();
+  ctx.arc(x - radius * 0.3, y - radius * 0.1, radius * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Right eye (Crazy bulging, larger)
+  ctx.beginPath();
+  ctx.arc(x + radius * 0.3, y - radius * 0.1, radius * 0.26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Pupils
+  ctx.fillStyle = isDark ? "#111827" : "#1e1b4b"; // almost black
+  ctx.beginPath();
+  // Left pupil (looking down and left)
+  ctx.arc(x - radius * 0.34, y - radius * 0.07, radius * 0.06, 0, Math.PI * 2);
+  // Right pupil (looking top and right)
+  ctx.arc(x + radius * 0.38, y - radius * 0.15, radius * 0.05, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 6. NOSE
+  ctx.fillStyle = darkGreen;
+  ctx.beginPath();
+  ctx.ellipse(x - radius * 0.05, y + radius * 0.08, radius * 0.03, radius * 0.06, -Math.PI / 12, 0, Math.PI * 2);
+  ctx.ellipse(x + radius * 0.05, y + radius * 0.08, radius * 0.03, radius * 0.06, Math.PI / 12, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 7. SMILE & TEETH
+  // Draw open mouth path (crescent smile)
+  ctx.fillStyle = mouthInside;
+  ctx.strokeStyle = eyeOutlineColor;
+  ctx.lineWidth = radius * 0.07;
+  ctx.beginPath();
+  ctx.moveTo(x - radius * 0.58, y + radius * 0.15);
+  // Top lip curve
+  ctx.quadraticCurveTo(x, y + radius * 0.26, x + radius * 0.58, y + radius * 0.15);
+  // Bottom lip curve
+  ctx.quadraticCurveTo(x, y + radius * 0.65, x - radius * 0.58, y + radius * 0.15);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Cheek lines / expression wrinkles at corner of mouth
+  ctx.strokeStyle = darkGreen;
+  ctx.lineWidth = radius * 0.04;
+  ctx.beginPath();
+  ctx.arc(x - radius * 0.58, y + radius * 0.15, radius * 0.08, Math.PI * 0.8, Math.PI * 1.6);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x + radius * 0.58, y + radius * 0.15, radius * 0.08, Math.PI * 1.4, Math.PI * 2.2);
+  ctx.stroke();
+
+  // Crooked Yellowish Teeth
+  ctx.fillStyle = toothColor;
+  ctx.strokeStyle = eyeOutlineColor;
+  ctx.lineWidth = radius * 0.03;
+
+  // Helper to draw a small rectangular tooth
+  const drawZombieTooth = (tx: number, ty: number, tw: number, th: number, angleRad: number) => {
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.rotate(angleRad);
+    ctx.beginPath();
+    ctx.rect(-tw / 2, 0, tw, th);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  // Upper Teeth (hanging down)
+  // Left upper tooth (crooked, hanging from top lip)
+  drawZombieTooth(x - radius * 0.22, y + radius * 0.21, radius * 0.1, radius * 0.08, Math.PI / 18);
+  // Right upper tooth (crooked, hanging from top lip)
+  drawZombieTooth(x + radius * 0.25, y + radius * 0.21, radius * 0.09, radius * 0.08, -Math.PI / 12);
+
+  // Lower Teeth (pointing up)
+  // Left lower tooth
+  drawZombieTooth(x - radius * 0.35, y + radius * 0.38, radius * 0.08, -radius * 0.07, -Math.PI / 12);
+  // Middle lower tooth
+  drawZombieTooth(x - radius * 0.02, y + radius * 0.45, radius * 0.09, -radius * 0.09, Math.PI / 24);
+  // Right lower tooth
+  drawZombieTooth(x + radius * 0.32, y + radius * 0.40, radius * 0.08, -radius * 0.07, Math.PI / 18);
+
+  ctx.restore();
+};
+
 export const GameCanvas: React.FC<GameCanvasProps> = ({
   permanentUpgrades,
   soundEnabled,
@@ -814,7 +1001,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const delta = Math.min(100, time - lastTime); // Cap delta to prevent massive jumps when tab loses focus
       lastTime = time;
 
-      if (!isPaused && !showReinforceModal && !gameState.current.isLevelingUp && !gameState.current.isEnded) {
+      if (!isPaused && !showReinforceModal && !showDevPanel && !gameState.current.isLevelingUp && !gameState.current.isEnded) {
         updateGame(delta);
       }
 
@@ -828,7 +1015,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     return () => {
       if (gameLoopRef.current) cancelAnimationFrame(gameLoopRef.current);
     };
-  }, [isPaused, showReinforceModal]);
+  }, [isPaused, showReinforceModal, showDevPanel]);
 
   const damagePlayer = (amount: number) => {
     const g = gameState.current;
@@ -1080,6 +1267,70 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     g.camera.x += (g.player.x - g.camera.x - g.dimensions.width / 2) * 0.1;
     g.camera.y += (g.player.y - g.camera.y - g.dimensions.height / 2) * 0.1;
 
+    // Player Poison Damage Update (10초간 1초씩 3HP 감소)
+    if (g.player.poisonTimer && g.player.poisonTimer > 0) {
+      g.player.poisonTimer -= delta;
+      g.player.poisonTick = (g.player.poisonTick || 0) + delta;
+      if (g.player.poisonTick >= 1000) {
+        g.player.poisonTick -= 1000;
+        damagePlayer(3);
+        g.damageTexts.push({
+          x: g.player.x + (Math.random() - 0.5) * 16,
+          y: g.player.y - 25,
+          text: "-3 (독 지속피해)",
+          color: "#a855f7",
+          size: 15,
+          life: 1.2,
+        });
+      }
+    }
+
+    // 좀비 잡몹 감염 도트데미지 업데이트 (3초간 1초씩 5HP 감소)
+    if (g.player.zombieDotTimer && g.player.zombieDotTimer > 0) {
+      g.player.zombieDotTimer -= delta;
+      g.player.zombieDotTick = (g.player.zombieDotTick || 0) + delta;
+      if (g.player.zombieDotTick >= 1000) {
+        g.player.zombieDotTick -= 1000;
+        damagePlayer(5);
+        g.damageTexts.push({
+          x: g.player.x + (Math.random() - 0.5) * 16,
+          y: g.player.y - 25,
+          text: "-5 (좀비 감염피해)",
+          color: "#84cc16",
+          size: 15,
+          life: 1.2,
+        });
+      }
+    }
+
+    // 출혈 도트데미지 업데이트 (3초간 1초씩 5HP 감소)
+    if (g.player.bleedTimer && g.player.bleedTimer > 0) {
+      g.player.bleedTimer -= delta;
+      g.player.bleedTick = (g.player.bleedTick || 0) + delta;
+      if (g.player.bleedTick >= 1000) {
+        g.player.bleedTick -= 1000;
+        damagePlayer(5);
+        g.damageTexts.push({
+          x: g.player.x + (Math.random() - 0.5) * 16,
+          y: g.player.y - 25,
+          text: "-5 (출혈)",
+          color: "#ef4444",
+          size: 15,
+          life: 1.2,
+        });
+      }
+    }
+
+    // 보스 할퀴기 타격 연출(claw) 업데이트
+    if (g.claws) {
+      g.claws = g.claws.filter((c: any) => {
+        c.timer -= delta;
+        return c.timer > 0;
+      });
+    } else {
+      g.claws = [];
+    }
+
     // 2. Incremental second trackers and spawn triggers
     g.timers.enemySpawn += delta;
     g.timers.gameSecond += delta;
@@ -1132,17 +1383,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       updateReactHUD();
     }
 
-    // Enemy spawn controller based on time survived
-    const spawnRate = Math.max(250, 1200 - Math.floor(g.player.timeElapsed / 10) * 80);
+    // Enemy spawn controller based on time survived (적 개체수 완화로 생존율 향상)
+    const spawnRate = Math.max(400, 1300 - Math.floor(g.player.timeElapsed / 10) * 65);
     if (g.timers.enemySpawn >= spawnRate) {
       g.timers.enemySpawn = 0;
       // Respect disableNormalSpawns toggle
       if (!g.disableNormalSpawns) {
         // Do not spawn infinite normal enemies during boss fights to avoid clustering
         if (g.enemies.filter(e => e.type === "BOSS").length === 0) {
-          // Spawn more enemies simultaneously as elapsed time grows!
-          const baseSpawnCount = 1 + Math.floor(g.player.timeElapsed / 45);
-          const spawnCount = Math.min(6, baseSpawnCount);
+          // Spawn more enemies simultaneously as elapsed time grows (개체수 최대치 완화)
+          const baseSpawnCount = 1 + Math.floor(g.player.timeElapsed / 65);
+          const spawnCount = Math.min(4, baseSpawnCount);
           for (let i = 0; i < spawnCount; i++) {
             spawnEnemies();
           }
@@ -1309,10 +1560,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     if (g.skills.weapons[WeaponType.BLACK_HOLE]) {
       const bhData = g.skills.weapons[WeaponType.BLACK_HOLE];
       g.timers.blackHole = (g.timers.blackHole || 0) + delta;
-      const rate = (bhData.isEvo ? 1400 : 3500 - bhData.level * 350) * cdMultiplier;
+      
+      // Reduce fire rate slightly to prevent too much spam (from 1400/3500 to 2200/4500)
+      const rate = (bhData.isEvo ? 2200 : 4500 - bhData.level * 350) * cdMultiplier;
       if (g.timers.blackHole >= rate) {
         g.timers.blackHole = 0;
         fireBlackHole(bhData);
+      }
+
+      // EVO final stage: Spawn a giant devastating Super Black Hole every 30 seconds!
+      if (bhData.isEvo) {
+        g.timers.superBlackHole = (g.timers.superBlackHole || 0) + delta;
+        if (g.timers.superBlackHole >= 30000) {
+          g.timers.superBlackHole = 0;
+          fireSuperBlackHole(bhData);
+        }
       }
     }
   };
@@ -1333,15 +1595,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       })
       .sort((a, b) => a.dist - b.dist);
 
-    const targetCount = wpnData.isEvo ? 4 : Math.min(targets.length, 1 + Math.floor(wpnData.level / 2));
+    const targetCount = wpnData.isEvo ? 6 : Math.min(targets.length, 1 + Math.floor(wpnData.level / 2));
+    const baseEnemy = targets[0].enemy;
+    const baseAngle = Math.atan2(baseEnemy.y - g.player.y, baseEnemy.x - g.player.x);
 
     for (let i = 0; i < targetCount; i++) {
-      if (!targets[i]) break;
-      const enemy = targets[i].enemy;
-      const angle = Math.atan2(enemy.y - g.player.y, enemy.x - g.player.x);
+      let angle = baseAngle;
+      let angleOffset = 0;
 
-      // Add slight offset for multi-shots so they spread beautifully
-      const angleOffset = (i - (targetCount - 1) / 2) * 0.15;
+      if (wpnData.isEvo) {
+        // Evo kunai shoots a highly precise, dense frontal fan toward the absolute closest target
+        angleOffset = (i - (targetCount - 1) / 2) * 0.10;
+      } else {
+        if (!targets[i]) break;
+        const enemy = targets[i].enemy;
+        angle = Math.atan2(enemy.y - g.player.y, enemy.x - g.player.x);
+        angleOffset = (i - (targetCount - 1) / 2) * 0.15;
+      }
 
       g.projectiles.push({
         type: "KUNAI",
@@ -1349,7 +1619,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         y: g.player.y,
         dx: Math.cos(angle + angleOffset),
         dy: Math.sin(angle + angleOffset),
-        speed: wpnData.isEvo ? 12 : 7 + wpnData.level,
+        speed: wpnData.isEvo ? 13 : 7 + wpnData.level,
         size: wpnData.isEvo ? 16 : 8 + wpnData.level * 1.5,
         damage: (20 + wpnData.level * 10) * g.player.atkMultiplier * (wpnData.isEvo ? 2.5 : 1),
         piercing: wpnData.isEvo ? 999 : Math.floor(wpnData.level / 2), // EVO pierces everything!
@@ -1675,29 +1945,62 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const fireBlackHole = (wpnData: any) => {
     const g = gameState.current;
-    const count = wpnData.isEvo ? 2 : 1;
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      g.projectiles.push({
-        type: "BLACK_HOLE",
-        x: g.player.x,
-        y: g.player.y,
-        dx: Math.cos(angle),
-        dy: Math.sin(angle),
-        speed: wpnData.isEvo ? 1.5 : 2.2,
-        pullRadius: wpnData.isEvo ? 250 : 130 + wpnData.level * 15,
-        damageRadius: wpnData.isEvo ? 85 : 45 + wpnData.level * 6,
-        damage: (30 + wpnData.level * 15) * g.player.atkMultiplier * (wpnData.isEvo ? 2.5 : 1),
-        life: wpnData.isEvo ? 5000 : 3500 + wpnData.level * 300,
-        tickTimer: 0,
-        isEvo: wpnData.isEvo,
-      });
-    }
+    // Always fire exactly 1 black hole to reduce spam, as requested
+    const angle = Math.random() * Math.PI * 2;
+    g.projectiles.push({
+      type: "BLACK_HOLE",
+      x: g.player.x,
+      y: g.player.y,
+      dx: Math.cos(angle),
+      dy: Math.sin(angle),
+      speed: wpnData.isEvo ? 1.5 : 2.2,
+      pullRadius: wpnData.isEvo ? 250 : 130 + wpnData.level * 15,
+      damageRadius: wpnData.isEvo ? 85 : 45 + wpnData.level * 6,
+      damage: (30 + wpnData.level * 15) * g.player.atkMultiplier * (wpnData.isEvo ? 2.5 : 1),
+      life: wpnData.isEvo ? 5000 : 3500 + wpnData.level * 300,
+      tickTimer: 0,
+      isEvo: wpnData.isEvo,
+    });
     if (soundEnabledRef.current) soundEngine.playShoot();
+  };
+
+  const fireSuperBlackHole = (wpnData: any) => {
+    const g = gameState.current;
+    
+    // Create an immensely large and powerful stationary Singularity centered on the player
+    g.projectiles.push({
+      type: "SUPER_BLACK_HOLE",
+      x: g.player.x,
+      y: g.player.y,
+      dx: 0,
+      dy: 0,
+      speed: 0,
+      pullRadius: 520, // Devastating pull radius covering almost the whole screen
+      damageRadius: 180, // High-damage area
+      damage: (30 + wpnData.level * 15) * g.player.atkMultiplier * 15.0, // Deals massive 15x continuous damage!
+      life: 7000, // Stays active for 7 seconds
+      tickTimer: 0,
+      isEvo: true,
+    });
+
+    g.damageTexts.push({
+      x: g.player.x,
+      y: g.player.y - 65,
+      text: "🌌 초중력 특이점 붕괴 개시!!! 🌌",
+      color: "#db2777",
+      size: 18,
+      life: 2.2,
+    });
+
+    if (soundEnabledRef.current) {
+      soundEngine.playEvo();
+    }
   };
 
   const applyDamageToEnemy = (enemy: any, amount: number, knockbackAmount: number = 5) => {
     if (enemy.isOutOfScreen) return; // Cannot damage out-of-screen/jumping enemies
+    if (enemy.tombstoneTimer && enemy.tombstoneTimer > 0) return; // Cannot damage spawning enemies during tombstone phase
+    if (enemy.isResurrecting) return; // Cannot damage during resurrection
     // Check for custom invulnerability (e.g. Anger-Issue Gorilla pattern 3)
     if (enemy.isInvulnerable) {
       if (Math.random() < 0.25) { // Prevents too much text spam
@@ -1713,8 +2016,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       return;
     }
 
+    // 패턴 3: 좀비 뚱돼지 체력 50% 이하일 시 피해를 30% 덜 받는다.
+    let modifiedAmount = amount;
+    if (enemy.name && enemy.name.includes("좀비 뚱돼지") && enemy.hp <= (enemy.maxHp || 110000) * 0.5) {
+      modifiedAmount *= 0.7;
+    }
+
     const isCrit = Math.random() < 0.15;
-    const finalAmount = isCrit ? Math.floor(amount * 1.5) : Math.floor(amount);
+    const finalAmount = isCrit ? Math.floor(modifiedAmount * 1.5) : Math.floor(modifiedAmount);
 
     enemy.hp -= finalAmount;
 
@@ -1743,6 +2052,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const updateProjectiles = (delta: number) => {
     const g = gameState.current;
+    
+    // Reset black hole trapped state for all enemies before calculation
+    g.enemies.forEach((e: any) => {
+      e.isBlackHoleTrapped = false;
+    });
 
     g.projectiles = g.projectiles.filter((p: any) => {
       if (p.type === "BOOMERANG") {
@@ -1809,11 +2123,52 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const e = g.enemies[i];
           if (e.isOutOfScreen) continue;
           const dist = Math.hypot(e.x - p.x, e.y - p.y);
-          if (dist < p.pullRadius && dist > 15 && !e.isBoss) {
-            const pullForce = 0.08 * (1 - dist / p.pullRadius);
+          
+          const isBossLike = e.isBoss || e.type === "BOSS" || e.type === "MINI_BOSS" || e.type === "FINAL_BOSS";
+          
+          // Scaled pulling effect: smaller monsters get pulled mildly, large monsters (radius >= 24) & bosses are fully immune.
+          let sizeFactor = 0;
+          if (e.radius < 24 && !isBossLike) {
+            sizeFactor = Math.max(0, 1 - (e.radius - 12) / 12);
+          }
+
+          // Pull force is significantly reduced to only hinder movement (0.015 multiplier instead of 0.08)
+          if (dist < p.pullRadius && dist > 15 && sizeFactor > 0) {
+            const pullForce = 0.015 * (1 - dist / p.pullRadius) * sizeFactor;
             e.x += (p.x - e.x) * pullForce * (delta / 16.6);
             e.y += (p.y - e.y) * pullForce * (delta / 16.6);
           }
+          if (doDamage && dist < p.damageRadius) {
+            applyDamageToEnemy(e, p.damage, 0);
+          }
+        }
+        return p.life > 0;
+      }
+
+      if (p.type === "SUPER_BLACK_HOLE") {
+        p.life -= delta;
+        p.tickTimer = (p.tickTimer || 0) + delta;
+        const doDamage = p.tickTimer >= 220;
+        if (doDamage) p.tickTimer = 0;
+
+        for (let i = 0; i < g.enemies.length; i++) {
+          const e = g.enemies[i];
+          if (e.isOutOfScreen) continue;
+          const dist = Math.hypot(e.x - p.x, e.y - p.y);
+          const isBossLike = e.isBoss || e.type === "BOSS" || e.type === "MINI_BOSS" || e.type === "FINAL_BOSS";
+
+          if (dist < p.pullRadius) {
+            if (!isBossLike) {
+              // Extremely powerful pull for non-bosses to the center
+              const pullForce = 0.09 * (1 - dist / p.pullRadius) + 0.04;
+              e.x += (p.x - e.x) * pullForce * (delta / 16.6);
+              e.y += (p.y - e.y) * pullForce * (delta / 16.6);
+
+              // Captured enemies are completely trapped: they can't move and do NOT damage the player!
+              e.isBlackHoleTrapped = true;
+            }
+          }
+
           if (doDamage && dist < p.damageRadius) {
             applyDamageToEnemy(e, p.damage, 0);
           }
@@ -2002,10 +2357,94 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const updateEnemies = (delta: number) => {
     const g = gameState.current;
+    const spawnedEnemiesThisFrame: any[] = [];
 
     g.enemies = g.enemies.filter((e: any) => {
       // Check death
       if (e.hp <= 0) {
+        // 패턴 1: 좀비 뚱돼지 최초 1회 100% 체력으로 부활
+        if (e.name && e.name.includes("좀비 뚱돼지") && !e.hasRevived) {
+          if (!e.isResurrecting) {
+            e.isResurrecting = true;
+            e.resurrectTimer = 2200; // 2.2 seconds resurrection delay
+            e.state = "RESURRECTING";
+            e.drawWarningArea = null;
+
+            // Generate initial dark smoke particles
+            for (let k = 0; k < 15; k++) {
+              const angle = Math.random() * Math.PI * 2;
+              const speed = 0.5 + Math.random() * 2.5;
+              g.particles.push({
+                x: e.x,
+                y: e.y,
+                dx: Math.cos(angle) * speed,
+                dy: Math.sin(angle) * speed,
+                size: 6 + Math.random() * 8,
+                color: "rgba(15, 23, 42, 0.4)", // Dark smoke
+                life: 0.8,
+                decay: 0.02,
+              });
+            }
+          } else {
+            // Tick resurrection timer
+            e.resurrectTimer -= delta;
+
+            // Spawn green smoke particles during regeneration
+            if (Math.random() < 0.4) {
+              const rx = e.x + (Math.random() - 0.5) * e.radius * 1.5;
+              const ry = e.y + (Math.random() - 0.5) * e.radius * 1.5;
+              g.particles.push({
+                x: rx,
+                y: ry,
+                dx: (Math.random() - 0.5) * 0.8,
+                dy: (Math.random() - 0.5) * 0.8,
+                size: 8 + Math.random() * 12,
+                color: "rgba(34, 197, 94, 0.35)", // light green smoke
+                life: 0.8 + Math.random() * 0.4,
+                decay: 0.02,
+              });
+            }
+
+            if (e.resurrectTimer <= 0) {
+              e.isResurrecting = false;
+              e.hasRevived = true;
+              e.hp = e.maxHp || 110000;
+              e.state = "NORMAL";
+              e.patternTimer = 0;
+
+              g.damageTexts.push({
+                x: e.x,
+                y: e.y - 45,
+                text: "🧟 불사 부활!! (HP 100%) 🧟",
+                color: "#84cc16",
+                size: 21,
+                life: 2.5,
+              });
+
+              // Huge green smoke explosion on resurrection completion!
+              for (let k = 0; k < 40; k++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1.2 + Math.random() * 5.0;
+                g.particles.push({
+                  x: e.x,
+                  y: e.y,
+                  dx: Math.cos(angle) * speed,
+                  dy: Math.sin(angle) * speed,
+                  size: 8 + Math.random() * 16,
+                  color: "rgba(22, 163, 74, 0.7)", // vivid green zombie smoke
+                  life: 1.2 + Math.random() * 0.6,
+                  decay: 0.012,
+                });
+              }
+
+              if (soundEnabledRef.current) {
+                soundEngine.playBossAlert();
+              }
+            }
+          }
+          return true; // 죽지 않고 필드에 계속 유지
+        }
+
         g.player.kills += 1;
         // Drop XP Gem
         spawnGem(e.x, e.y, e.type);
@@ -2680,6 +3119,376 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               }
             }
           }
+        } else if (e.name && e.name.includes("원거리 딜러 난쟁이")) {
+          if (e.state === undefined) e.state = "NORMAL";
+          if (e.patternTimer === undefined) e.patternTimer = 0;
+          if (e.isEnraged === undefined) e.isEnraged = false;
+
+          // 패턴 3: 피 50% 이하면 패턴 주기 속도 빨라지고 이동속도 상승
+          if (e.hp <= e.maxHp * 0.5 && !e.isEnraged) {
+            e.isEnraged = true;
+            e.speed *= 1.45;
+            g.screenShake = 12;
+            soundEngine.playBossAlert();
+            g.damageTexts.push({
+              x: e.x,
+              y: e.y - 35,
+              text: "⚡ 난쟁이 광폭화! (조준/공격 및 이동속도 급가속) ⚡",
+              color: "#ef4444",
+              size: 16,
+              life: 2.5,
+            });
+          }
+
+          const currentSpeed = e.speed;
+
+          if (e.state === "NORMAL") {
+            e.patternTimer += delta * (e.isEnraged ? 1.6 : 1.0);
+            if (e.patternTimer >= 2200) {
+              const isPattern1 = Math.random() < 0.55;
+              if (isPattern1) {
+                e.state = "DWARF_AIM_1";
+                e.aimTimer = e.isEnraged ? 600 : 1000; // 1초간 조준 (광폭화시 빨라짐)
+              } else {
+                e.state = "DWARF_AIM_2";
+                e.aimTimer = e.isEnraged ? 450 : 800; // 0.8초간 조준
+              }
+              e.patternTimer = 0;
+            }
+
+            // 플레이어 추격
+            const angle = Math.atan2(dy, dx);
+            e.x += Math.cos(angle) * currentSpeed * (delta / 16.6);
+            e.y += Math.sin(angle) * currentSpeed * (delta / 16.6);
+            e.drawWarningArea = null;
+
+          } else if (e.state === "DWARF_AIM_1") {
+            e.aimTimer -= delta;
+            e.drawWarningArea = {
+              type: "AIMING",
+              aimX: g.player.x,
+              aimY: g.player.y,
+            };
+
+            if (e.aimTimer <= 0) {
+              e.state = "DWARF_SHOOT_1";
+              // 플레이어가 움직이는 방향에다가 칼 발사 벡터 계산
+              let targetX = g.player.x + (g.player.vx || 0) * 18;
+              let targetY = g.player.y + (g.player.vy || 0) * 18;
+              const angle = Math.atan2(targetY - e.y, targetX - e.x);
+              e.shootDx = Math.cos(angle);
+              e.shootDy = Math.sin(angle);
+              e.shootCount = 0;
+              e.shootInterval = 0;
+              e.drawWarningArea = null;
+            }
+
+          } else if (e.state === "DWARF_SHOOT_1") {
+            e.shootInterval -= delta;
+            if (e.shootInterval <= 0) {
+              g.projectiles.push({
+                type: "DWARF_KNIFE",
+                x: e.x,
+                y: e.y,
+                dx: e.shootDx + (Math.random() - 0.5) * 0.14,
+                dy: e.shootDy + (Math.random() - 0.5) * 0.14,
+                speed: 10.5,
+                size: 16,
+                damage: e.damage * 1.3,
+                color: "#06b6d4",
+                life: 3000,
+              });
+              if (soundEnabledRef.current) soundEngine.playHit();
+              e.shootCount += 1;
+              e.shootInterval = e.isEnraged ? 60 : 95;
+              if (e.shootCount >= 10) {
+                e.state = "NORMAL";
+                e.patternTimer = 0;
+              }
+            }
+
+          } else if (e.state === "DWARF_AIM_2") {
+            e.aimTimer -= delta;
+            e.drawWarningArea = {
+              type: "AIMING",
+              aimX: g.player.x,
+              aimY: g.player.y,
+            };
+
+            if (e.aimTimer <= 0) {
+              e.state = "NORMAL";
+              e.patternTimer = 0;
+              e.drawWarningArea = null;
+              const angle = Math.atan2(g.player.y - e.y, g.player.x - e.x);
+              g.projectiles.push({
+                type: "DWARF_GIANT_ARROW",
+                x: e.x,
+                y: e.y,
+                dx: Math.cos(angle),
+                dy: Math.sin(angle),
+                speed: 13.0,
+                size: 45, // 엄청 큰 화살
+                damage: e.damage * 1.8,
+                color: "#ef4444",
+                isPoisonArrow: true,
+                life: 4000,
+              });
+              if (soundEnabledRef.current) soundEngine.playShoot();
+              g.screenShake = 6;
+            }
+          }
+        } else if (e.name && e.name.includes("좀비 뚱돼지")) {
+          if (e.isResurrecting) {
+            e.drawWarningArea = null;
+            return true;
+          }
+          // Initialize states if not present
+          if (e.state === undefined) e.state = "NORMAL";
+          if (e.patternTimer === undefined) e.patternTimer = 0;
+
+          if (e.state === "NORMAL") {
+            e.patternTimer += delta;
+            // 3.5초마다 패턴 발동 (랜덤하게 패턴 2 또는 패턴 4 실행)
+            if (e.patternTimer >= 3500) {
+              e.patternTimer = 0;
+              const choice = Math.random() < 0.5 ? "PATTERN_2_WARN" : "PATTERN_4_SCREAM";
+              e.state = choice;
+              if (choice === "PATTERN_2_WARN") {
+                e.pattern2Timer = 2000; // 2초 경고
+                e.pattern2Angle = Math.atan2(g.player.y - e.y, g.player.x - e.x);
+              } else {
+                e.pattern4Timer = 1500; // 1.5초 멈추고 포효
+                g.screenShake = 12;
+                soundEngine.playBossAlert();
+                
+                // Scream floating text above the boss
+                g.damageTexts.push({
+                  x: e.x,
+                  y: e.y - 40,
+                  text: "🧟 좀비 무리를 부르는 포효! 🧟",
+                  color: "#22c55e",
+                  size: 16,
+                  life: 1.8,
+                });
+
+                // Scream shockwave particles
+                for (let k = 0; k < 24; k++) {
+                  const angle = (k * Math.PI * 2) / 24;
+                  g.particles.push({
+                    x: e.x,
+                    y: e.y,
+                    dx: Math.cos(angle) * 4.5,
+                    dy: Math.sin(angle) * 4.5,
+                    size: 8,
+                    color: "rgba(34, 197, 94, 0.4)",
+                    life: 0.6,
+                    decay: 0.04,
+                  });
+                }
+              }
+            }
+
+            // Normal chase
+            const angle = Math.atan2(dy, dx);
+            e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+            e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+            e.drawWarningArea = null;
+
+          } else if (e.state === "PATTERN_2_WARN") {
+            // 2초동안 플레이어가 있는 곳에 보스를 중심으로 부채꼴 형태로 빨간 표시
+            e.pattern2Timer -= delta;
+            
+            // Track player position to update angle dynamically during warning
+            e.pattern2Angle = Math.atan2(g.player.y - e.y, g.player.x - e.x);
+            
+            e.drawWarningArea = {
+              type: "FATTY_FAN_WARNING",
+              angle: e.pattern2Angle,
+              radius: 220, // 220px range
+              spread: Math.PI * 2 / 3, // 120 degrees spread!
+              timer: e.pattern2Timer,
+            };
+
+            if (e.pattern2Timer <= 0) {
+              // Lock state to attack, initialize the first stage (Scratch first, then Dash)
+              e.state = "PATTERN_2_ATTACK";
+              e.pattern2AttackStage = 0;
+              e.pattern2Phase = "SCRATCH_WARN";
+              e.pattern2WarnTimer = 140; // 0.14s swift pre-indicator for each scratch
+              e.pattern2Angle = Math.atan2(g.player.y - e.y, g.player.x - e.x);
+              e.drawWarningArea = null;
+            }
+
+          } else if (e.state === "PATTERN_2_ATTACK") {
+            // 그 후에 해당 방향으로 짧은 예고 부채꼴 표시 후 할퀴기 후 돌진 (총 2번만 돌진, 3번째 할퀴기는 돌진 없음)
+            if (e.pattern2Phase === "SCRATCH_WARN") {
+              e.pattern2WarnTimer -= delta;
+
+              e.drawWarningArea = {
+                type: "FATTY_FAN_WARNING",
+                angle: e.pattern2Angle,
+                radius: 190, // slightly shorter radius for successive quick swipes
+                spread: Math.PI * 2 / 3, // 120 degrees spread
+                timer: e.pattern2WarnTimer,
+              };
+
+              if (e.pattern2WarnTimer <= 0) {
+                e.pattern2Phase = "SCRATCH_ATTACK";
+              }
+
+            } else if (e.pattern2Phase === "SCRATCH_ATTACK") {
+              e.drawWarningArea = null;
+
+              // Check if player is within range and within 120 degrees fan
+              const pDist = Math.hypot(g.player.x - e.x, g.player.y - e.y);
+              const pAngle = Math.atan2(g.player.y - e.y, g.player.x - e.x);
+
+              let angleDiff = pAngle - e.pattern2Angle;
+              while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+              while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+
+              // within 190px range and 120 degrees spread (Math.PI/3 on either side)
+              if (pDist <= 190 && Math.abs(angleDiff) <= (Math.PI / 3)) {
+                damagePlayer(25); // Deal 25 damage per hit
+
+                // Intense strike visual effects (강렬한 타격 연출!)
+                g.screenShake = 18; // Massive shake
+
+                g.claws = g.claws || [];
+                g.claws.push({
+                  x: g.player.x,
+                  y: g.player.y,
+                  angle: e.pattern2Angle,
+                  timer: 450,
+                  maxTimer: 450,
+                });
+
+                g.damageTexts.push({
+                  x: g.player.x,
+                  y: g.player.y - 30,
+                  text: "💥 무자비한 할퀴기! 💥",
+                  color: "#f43f5e",
+                  size: 16,
+                  life: 1.4,
+                });
+
+                if (soundEnabledRef.current) soundEngine.playHit();
+                
+                // Spawn blood burst impact particles
+                for (let i = 0; i < 18; i++) {
+                  const pAng = Math.random() * Math.PI * 2;
+                  const pSpd = 2 + Math.random() * 6;
+                  g.particles.push({
+                    x: g.player.x,
+                    y: g.player.y,
+                    dx: Math.cos(pAng) * pSpd,
+                    dy: Math.sin(pAng) * pSpd,
+                    size: 3 + Math.random() * 5,
+                    color: "#dc2626", // Blood red
+                    life: 0.7,
+                    decay: 0.03,
+                  });
+                }
+              } else {
+                // If we missed the player, still trigger a claw slash visual at boss's front
+                g.claws = g.claws || [];
+                g.claws.push({
+                  x: e.x + Math.cos(e.pattern2Angle) * 60,
+                  y: e.y + Math.sin(e.pattern2Angle) * 60,
+                  angle: e.pattern2Angle,
+                  timer: 350,
+                  maxTimer: 350,
+                });
+              }
+
+              // Only dash forward if we haven't completed 2 dashes (Stage 0 and Stage 1 dashes)
+              if (e.pattern2AttackStage < 2) {
+                e.pattern2Phase = "DASH";
+                e.pattern2DashTimer = 150; // 0.15s ultra rapid dash
+                e.pattern2DashDx = Math.cos(e.pattern2Angle);
+                e.pattern2DashDy = Math.sin(e.pattern2Angle);
+              } else {
+                // Done with 3rd scratch attack, finish pattern (no dash for the last one)
+                e.state = "NORMAL";
+                e.patternTimer = 0;
+                e.pattern2Phase = undefined;
+              }
+
+            } else if (e.pattern2Phase === "DASH") {
+              e.pattern2DashTimer -= delta;
+
+              // Move forward (increased speed multiplier to 5.5 for high-speed, long lunge)
+              e.x += e.pattern2DashDx * e.speed * 5.5 * (delta / 16.6);
+              e.y += e.pattern2DashDy * e.speed * 5.5 * (delta / 16.6);
+
+              // Spawn dusty trailing particles
+              if (Math.random() < 0.4) {
+                g.particles.push({
+                  x: e.x + (Math.random() - 0.5) * 16,
+                  y: e.y + (Math.random() - 0.5) * 16,
+                  dx: -e.pattern2DashDx * 1.5,
+                  dy: -e.pattern2DashDy * 1.5,
+                  size: 3 + Math.random() * 4,
+                  color: "#475569",
+                  life: 0.5,
+                  decay: 0.05,
+                });
+              }
+
+              if (e.pattern2DashTimer <= 0) {
+                e.pattern2Phase = "RECOVERY";
+                e.pattern2RecoveryTimer = 100; // ultra short recovery delay (from 180)
+              }
+
+            } else if (e.pattern2Phase === "RECOVERY") {
+              e.pattern2RecoveryTimer -= delta;
+
+              if (e.pattern2RecoveryTimer <= 0) {
+                // Increment stage
+                e.pattern2AttackStage++;
+                e.pattern2Phase = "SCRATCH_WARN";
+                e.pattern2WarnTimer = 140; // swift pre-indicator for next strike
+                // Dynamic re-aiming towards the player's new position!
+                e.pattern2Angle = Math.atan2(g.player.y - e.y, g.player.x - e.x);
+              }
+            }
+
+          } else if (e.state === "PATTERN_4_SCREAM") {
+            // 보스가 잠시 멈추고 소리를 지름.
+            e.pattern4Timer -= delta;
+
+            // Tremble slightly while screaming
+            e.x += (Math.random() - 0.5) * 2;
+            e.y += (Math.random() - 0.5) * 2;
+
+            if (e.pattern4Timer <= 0) {
+              e.state = "NORMAL";
+              e.patternTimer = 0;
+
+              // 이후 플레이어 주변에서 '좀비'가 생성됨.
+              // Spawn 4 summoned zombies around the player with 1s tombstone delay
+              for (let i = 0; i < 4; i++) {
+                const angle = (i * Math.PI * 2) / 4 + Math.random() * 0.5;
+                const dist = 120 + Math.random() * 60;
+                const zx = g.player.x + Math.cos(angle) * dist;
+                const zy = g.player.y + Math.sin(angle) * dist;
+
+                spawnedEnemiesThisFrame.push({
+                  type: "SUMMONED_ZOMBIE",
+                  x: zx,
+                  y: zy,
+                  hp: 1200, // extremely sturdy summoned zombies (increased from 350)
+                  maxHp: 1200,
+                  damage: 12,
+                  speed: 1.5,
+                  radius: 15,
+                  color: "#16a34a", // dark rotting green
+                  tombstoneTimer: 1000, // 1 second tombstone rising phase
+                  tombstoneExploded: false,
+                });
+              }
+            }
+          }
         } else {
           // Other Bosses (General or 4, 6, 8 min Bosses)
           e.shootTimer = (e.shootTimer || 0) + delta;
@@ -2763,40 +3572,82 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             }
           }
 
-          // Move toward player
-          const angle = Math.atan2(dy, dx);
-          e.x += Math.cos(angle) * e.speed * (delta / 16.6);
-          e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+          // Move toward player (if not trapped inside Super Black Hole and not resurrecting)
+          if (!e.isBlackHoleTrapped && !e.isResurrecting) {
+            const angle = Math.atan2(dy, dx);
+            e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+            e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+          }
         }
       } else {
-        // Move forward
-        const angle = Math.atan2(dy, dx);
-        e.x += Math.cos(angle) * e.speed * (delta / 16.6);
-        e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+        // Move forward (or handle SUMMONED_ZOMBIE tombstone delay)
+        if (e.type === "SUMMONED_ZOMBIE" && e.tombstoneTimer && e.tombstoneTimer > 0) {
+          e.tombstoneTimer -= delta;
+          if (e.tombstoneTimer <= 0 && !e.tombstoneExploded) {
+            e.tombstoneExploded = true;
+            // Spawn crumbly dirt/stone breaking particles!
+            for (let i = 0; i < 15; i++) {
+              const pAngle = Math.random() * Math.PI * 2;
+              const pSpeed = 1 + Math.random() * 3;
+              g.particles.push({
+                x: e.x,
+                y: e.y,
+                dx: Math.cos(pAngle) * pSpeed,
+                dy: Math.sin(pAngle) * pSpeed,
+                size: 3 + Math.random() * 4,
+                color: Math.random() < 0.5 ? "#64748b" : "#78350f", // grey or dirt brown
+                life: 0.6,
+                decay: 0.04,
+              });
+            }
+          }
+        } else {
+          // Block movement if trapped inside Super Black Hole or resurrecting
+          if (!e.isBlackHoleTrapped && !e.isResurrecting) {
+            const angle = Math.atan2(dy, dx);
+            e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+            e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+          }
+        }
       }
 
-      // Deal damage to Player on collision
-      if (dist < g.player.radius + e.radius) {
-        damagePlayer(e.damage * (delta / 1000));
-        g.screenShake = 3;
+      // Deal damage to Player on collision (only if not trapped inside the Super Black Hole and not resurrecting)
+      if (dist < g.player.radius + e.radius && !e.isBlackHoleTrapped && !e.isResurrecting) {
+        if (e.type === "SUMMONED_ZOMBIE" && e.tombstoneTimer && e.tombstoneTimer > 0) {
+          // No damage during spawning tombstone phase
+        } else {
+          damagePlayer(e.damage * (delta / 1000));
+          g.screenShake = 3;
 
-        // Bleed particles
-        if (Math.random() < 0.1) {
-          g.particles.push({
-            x: g.player.x,
-            y: g.player.y,
-            dx: (Math.random() - 0.5) * 3,
-            dy: (Math.random() - 0.5) * 3,
-            size: 3,
-            color: "#f43f5e", // Blood red
-            life: 0.5,
-            decay: 0.05,
-          });
+          if (e.type === "SUMMONED_ZOMBIE") {
+            // 접촉할 시 3초간 출혈 피해를 입힘.(출혈: 초당 5의 피해를 입힘)
+            g.player.bleedTimer = 3000; // 3 seconds
+            g.player.bleedTick = (g.player.bleedTick || 0); // maintain ticks
+          }
+
+          // Bleed particles
+          if (Math.random() < 0.1) {
+            g.particles.push({
+              x: g.player.x,
+              y: g.player.y,
+              dx: (Math.random() - 0.5) * 3,
+              dy: (Math.random() - 0.5) * 3,
+              size: 3,
+              color: "#f43f5e", // Blood red
+              life: 0.5,
+              decay: 0.05,
+            });
+          }
         }
       }
 
       return true;
     });
+
+    // 안전하게 이번 프레임에 소환된 적들을 추가
+    if (spawnedEnemiesThisFrame.length > 0) {
+      g.enemies.push(...spawnedEnemiesThisFrame);
+    }
 
     // Sync Boss Health Bar with Priority Check
     const finalBoss = g.enemies.find((e: any) => e.type === "FINAL_BOSS");
@@ -2825,9 +3676,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       setBossHealth(null);
     }
 
-    // Update enemy acid spitters projectiles
+    // Update enemy projectiles (acid ball, dwarf knife, dwarf giant arrow)
     g.projectiles = g.projectiles.filter((p: any) => {
-      if (p.type === "ACID_BALL") {
+      if (p.type === "ACID_BALL" || p.type === "DWARF_KNIFE" || p.type === "DWARF_GIANT_ARROW") {
         p.x += p.dx * p.speed * (delta / 16.6);
         p.y += p.dy * p.speed * (delta / 16.6);
         p.life -= delta;
@@ -2835,7 +3686,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const dist = Math.hypot(g.player.x - p.x, g.player.y - p.y);
         if (dist < g.player.radius + p.size / 2) {
           damagePlayer(p.damage);
-          g.screenShake = 4;
+          g.screenShake = p.type === "DWARF_GIANT_ARROW" ? 10 : 4;
+          if (p.isPoisonArrow && !g.player.isGodMode) {
+            g.player.poisonTimer = 10000;
+            g.player.poisonTick = 0;
+            g.damageTexts.push({
+              x: g.player.x,
+              y: g.player.y - 35,
+              text: "☠️ 맹독 출혈 화살 적중! (10초간 지속 데미지) ☠️",
+              color: "#a855f7",
+              size: 15,
+              life: 2.5,
+            });
+          }
           return false;
         }
 
@@ -3089,10 +3952,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     } else if (minutes === 6) {
       bossHp = 65000;
       bossDamage = 65;
-      bossSpeed = 1.3;
-      bossRadius = 60;
+      bossSpeed = 1.4;
+      bossRadius = 45;
       bossColor = "#06b6d4";
-      bossName = "🤖 [6분 정예보스] 정예 메탈 기어 골렘";
+      bossName = "🏹 [6분 정예보스] 원거리 딜러 난쟁이";
     } else if (minutes === 7) {
       bossHp = 70000;
       bossDamage = 70;
@@ -3101,12 +3964,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       bossColor = "#b45309";
       bossName = "🤖 무법 파괴대왕 메카 보스 (7분)";
     } else if (minutes === 8) {
-      bossHp = 100000;
+      bossHp = 110000;
       bossDamage = 80;
-      bossSpeed = 1.6;
-      bossRadius = 65;
-      bossColor = "#ec4899";
-      bossName = "🌌 [8분 정예보스] 정예 차원 침략자";
+      bossSpeed = 1.35;
+      bossRadius = 75;
+      bossColor = "#16a34a"; // zombie green
+      bossName = "🧟 [8분 정예보스] 좀비 뚱돼지";
     } else if (minutes === 9) {
       bossHp = 120000;
       bossDamage = 90;
@@ -3171,6 +4034,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           [WeaponType.LIGHTNING]: "번개 발사기",
           [WeaponType.GATLING]: "전설의 개틀링건",
           [WeaponType.POOP_SPRAY]: "똥 뿌리기",
+          [WeaponType.BOOMERANG]: "부메랑",
+          [WeaponType.EXCALIBUR]: "엑스칼리버",
+          [WeaponType.BLACK_HOLE]: "블랙홀",
         };
         const name = weaponNames[randomKey] || randomKey;
         g.particles.push(...createLevelUpSparkles(g.player.x, g.player.y));
@@ -3591,35 +4457,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     g.enemies.forEach((e: any) => {
       ctx.save();
 
-      // If enemy is out of screen (e.g. jumping in the air), only render its warning zone and then skip the body/shadow drawing.
+      // If enemy is out of screen (e.g. jumping in the air), skip body drawing.
       if (e.isOutOfScreen) {
-        if (e.drawWarningArea && e.drawWarningArea.type === "GORILLA_JUMP") {
-          ctx.save();
-          const flashIntensity = Math.abs(Math.sin(Date.now() / 120)); // fast pulsing
-          ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + flashIntensity * 0.25})`;
-          ctx.beginPath();
-          ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.strokeStyle = `rgba(239, 68, 68, ${0.7 + flashIntensity * 0.3})`;
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash([8, 4]);
-          ctx.beginPath();
-          ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
-          ctx.stroke();
-
-          // Small crosshair indicator
-          ctx.setLineDash([]);
-          ctx.strokeStyle = "#ef4444";
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(e.drawWarningArea.targetX - 10, e.drawWarningArea.targetY);
-          ctx.lineTo(e.drawWarningArea.targetX + 10, e.drawWarningArea.targetY);
-          ctx.moveTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY - 10);
-          ctx.lineTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY + 10);
-          ctx.stroke();
-          ctx.restore();
-        }
         ctx.restore();
         return;
       }
@@ -3629,26 +4468,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.beginPath();
       ctx.ellipse(e.x, e.y + e.radius - 2, e.radius * 0.9, e.radius * 0.3, 0, 0, Math.PI * 2);
       ctx.fill();
-
-      // If charging or preparing slam, draw warning radius and dash vector line
-      if (e.state === "CHARGING" || e.state === "SLAM_PREP") {
-        ctx.strokeStyle = "rgba(239, 68, 68, 0.6)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius * 2 + Math.sin(Date.now() / 40) * 6, 0, Math.PI * 2);
-        ctx.stroke();
-
-        if (e.patternType === "DASH" && e.dashDx !== undefined) {
-          ctx.strokeStyle = "rgba(239, 68, 68, 0.45)";
-          ctx.lineWidth = 3.5;
-          ctx.setLineDash([6, 6]);
-          ctx.beginPath();
-          ctx.moveTo(e.x, e.y);
-          ctx.lineTo(e.x + e.dashDx * 240, e.y + e.dashDy * 240);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      }
 
       const isAnyBoss = e.type === "BOSS" || e.type === "MINI_BOSS" || e.type === "FINAL_BOSS";
 
@@ -3764,230 +4583,238 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
 
         // 4. Main Body Core (using a beautiful radial gradient to look 3D)
-        const bodyGrd = ctx.createRadialGradient(
-          e.x - e.radius * 0.2,
-          e.y - e.radius * 0.2,
-          e.radius * 0.1,
-          e.x,
-          e.y,
-          e.radius
-        );
-        bodyGrd.addColorStop(0, "#ffffff"); // high-contrast shine
-        bodyGrd.addColorStop(0.2, e.color);
-        bodyGrd.addColorStop(1, "#0f172a"); // deep shadow edge
+        const isZombieBoss = e.name && e.name.includes("좀비 뚱돼지");
 
-        ctx.fillStyle = bodyGrd;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-        ctx.fill();
+        if (isZombieBoss) {
+          drawZombieHead(ctx, e.x, e.y, e.radius, !!e.isResurrecting);
+        } else {
+          const bodyGrd = ctx.createRadialGradient(
+            e.x - e.radius * 0.2,
+            e.y - e.radius * 0.2,
+            e.radius * 0.1,
+            e.x,
+            e.y,
+            e.radius
+          );
+          bodyGrd.addColorStop(0, "#ffffff"); // high-contrast shine
+          bodyGrd.addColorStop(0.2, e.color);
+          bodyGrd.addColorStop(1, "#0f172a"); // deep shadow edge
 
-        // Outward thick stroke for high contrast
-        ctx.strokeStyle = "#0f172a";
-        ctx.lineWidth = 3.5;
-        ctx.stroke();
+          ctx.fillStyle = bodyGrd;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Outward thick stroke for high contrast
+          ctx.strokeStyle = "#0f172a";
+          ctx.lineWidth = 3.5;
+          ctx.stroke();
+        }
 
         // 5. Demonic Angry Eyes with Glowing trail or Custom Gorilla Face
-        if (e.name && e.name.includes("분조장 고릴라")) {
-          // --- 화가 난 표정의 분조장 고릴라 그리기 ---
-          // 1. 고릴라 주둥이/턱 부근 얼굴 영역 (Facial Mask)
-          ctx.fillStyle = "#1e1b4b"; // 어두운 남색/검정 계열의 고릴라 피부색
-          ctx.beginPath();
-          ctx.arc(e.x, e.y + e.radius * 0.1, e.radius * 0.75, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = "#000000";
-          ctx.lineWidth = 2.5;
-          ctx.stroke();
-
-          // 2. 찡그린 미간 주름 (Angry Forehead Wrinkles)
-          ctx.strokeStyle = "#ef4444"; // 붉은 핏줄/화난 주름 연출
-          ctx.lineWidth = 3;
-          ctx.lineCap = "round";
-          
-          // 미간 중앙 가로 주름들
-          ctx.beginPath();
-          ctx.moveTo(e.x - e.radius * 0.2, e.y - e.radius * 0.3);
-          ctx.lineTo(e.x + e.radius * 0.2, e.y - e.radius * 0.3);
-          ctx.moveTo(e.x - e.radius * 0.15, e.y - e.radius * 0.22);
-          ctx.lineTo(e.x + e.radius * 0.15, e.y - e.radius * 0.22);
-          ctx.stroke();
-
-          // 3. 치켜뜬 성난 고릴라 눈 (Super Angry Glowing Eyes)
-          // 눈 테두리 (검정)
-          ctx.fillStyle = "#000000";
-          ctx.beginPath();
-          ctx.arc(e.x - e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.18, 0, Math.PI * 2);
-          ctx.arc(e.x + e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.18, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 눈 내부 불타는 붉은색/노란색 그라데이션 광기
-          ctx.fillStyle = "#f43f5e"; // Rose 500
-          ctx.beginPath();
-          ctx.ellipse(e.x - e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.15, e.radius * 0.08, -Math.PI / 8, 0, Math.PI * 2);
-          ctx.ellipse(e.x + e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.15, e.radius * 0.08, Math.PI / 8, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 이글거리는 노란 눈동자
-          ctx.fillStyle = "#fbbf24"; // Amber 400
-          ctx.beginPath();
-          ctx.arc(e.x - e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.06, 0, Math.PI * 2);
-          ctx.arc(e.x + e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.06, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 4. 강하게 찌푸린 눈썹 (Strong Angry Eyebrows)
-          ctx.strokeStyle = "#000000";
-          ctx.lineWidth = 5;
-          ctx.beginPath();
-          // 왼쪽 눈썹 (바깥에서 중앙 아래로 급경사)
-          ctx.moveTo(e.x - e.radius * 0.5, e.y - e.radius * 0.28);
-          ctx.lineTo(e.x - e.radius * 0.12, e.y - e.radius * 0.14);
-          // 오른쪽 눈썹
-          ctx.moveTo(e.x + e.radius * 0.5, e.y - e.radius * 0.28);
-          ctx.lineTo(e.x + e.radius * 0.12, e.y - e.radius * 0.14);
-          ctx.stroke();
-
-          // 5. 큼직한 고릴라 콧구멍 (Gorilla Flared Nostrils)
-          ctx.fillStyle = "#090514";
-          ctx.beginPath();
-          ctx.ellipse(e.x - e.radius * 0.08, e.y + e.radius * 0.1, e.radius * 0.08, e.radius * 0.05, -Math.PI/6, 0, Math.PI * 2);
-          ctx.ellipse(e.x + e.radius * 0.08, e.y + e.radius * 0.1, e.radius * 0.08, e.radius * 0.05, Math.PI/6, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 콧구멍 찡그린 선들
-          ctx.strokeStyle = "#475569";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(e.x - e.radius * 0.12, e.y + e.radius * 0.02);
-          ctx.lineTo(e.x, e.y + e.radius * 0.08);
-          ctx.lineTo(e.x + e.radius * 0.12, e.y + e.radius * 0.02);
-          ctx.stroke();
-
-          // 6. 극도로 화난 입과 사나운 송곳니 (Roaring Mouth & Fangs)
-          // 벌린 거대한 입 모양 (으르렁거리는 타원형)
-          ctx.fillStyle = "#090514"; // 입속 어둠
-          ctx.strokeStyle = "#000000";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.ellipse(e.x, e.y + e.radius * 0.38, e.radius * 0.38, e.radius * 0.18, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-
-          // 빨간 혀
-          ctx.fillStyle = "#f43f5e";
-          ctx.beginPath();
-          ctx.ellipse(e.x, e.y + e.radius * 0.46, e.radius * 0.22, e.radius * 0.08, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 뾰족하고 거대한 송곳니 그리기 (Fangs)
-          ctx.fillStyle = "#ffffff";
-          const drawGorillaFang = (fx: number, fy: number, sizeW: number, sizeH: number, isUpper: boolean) => {
+        if (!isZombieBoss) {
+          if (e.name && e.name.includes("분조장 고릴라")) {
+            // --- 화가 난 표정의 분조장 고릴라 그리기 ---
+            // 1. 고릴라 주둥이/턱 부근 얼굴 영역 (Facial Mask)
+            ctx.fillStyle = "#1e1b4b"; // 어두운 남색/검정 계열의 고릴라 피부색
             ctx.beginPath();
-            ctx.moveTo(fx - sizeW / 2, fy);
-            ctx.lineTo(fx + sizeW / 2, fy);
-            ctx.lineTo(fx, isUpper ? fy + sizeH : fy - sizeH);
-            ctx.closePath();
+            ctx.arc(e.x, e.y + e.radius * 0.1, e.radius * 0.75, 0, Math.PI * 2);
             ctx.fill();
-          };
-
-          // 윗니 송곳니 (양옆 크게 2개)
-          drawGorillaFang(e.x - e.radius * 0.24, e.y + e.radius * 0.24, e.radius * 0.1, e.radius * 0.15, true);
-          drawGorillaFang(e.x + e.radius * 0.24, e.y + e.radius * 0.24, e.radius * 0.1, e.radius * 0.15, true);
-          // 아랫니 송곳니 (가운데 크게 2개 올라옴)
-          drawGorillaFang(e.x - e.radius * 0.12, e.y + e.radius * 0.5, e.radius * 0.08, e.radius * 0.14, false);
-          drawGorillaFang(e.x + e.radius * 0.12, e.y + e.radius * 0.5, e.radius * 0.08, e.radius * 0.14, false);
-
-          // 소형 이빨 가이드 (자잘하게 채우기)
-          drawGorillaFang(e.x - e.radius * 0.04, e.y + e.radius * 0.24, e.radius * 0.06, e.radius * 0.08, true);
-          drawGorillaFang(e.x + e.radius * 0.04, e.y + e.radius * 0.24, e.radius * 0.06, e.radius * 0.08, true);
-        } else {
-          if (g.cinematic && g.cinematic.type === "victory" && e === g.cinematic.bossId) {
-            // --- DIZZY DEFEATED VICTORY EXPRESSION (X - X) ---
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = 4.5;
-            ctx.lineCap = "round";
-
-            // Left X eye
-            ctx.beginPath();
-            ctx.moveTo(e.x - e.radius * 0.35, e.y - e.radius * 0.25);
-            ctx.lineTo(e.x - e.radius * 0.15, e.y - e.radius * 0.05);
-            ctx.moveTo(e.x - e.radius * 0.15, e.y - e.radius * 0.25);
-            ctx.lineTo(e.x - e.radius * 0.35, e.y - e.radius * 0.05);
-            ctx.stroke();
-
-            // Right X eye
-            ctx.beginPath();
-            ctx.moveTo(e.x + e.radius * 0.15, e.y - e.radius * 0.25);
-            ctx.lineTo(e.x + e.radius * 0.35, e.y - e.radius * 0.05);
-            ctx.moveTo(e.x + e.radius * 0.35, e.y - e.radius * 0.25);
-            ctx.lineTo(e.x + e.radius * 0.15, e.y - e.radius * 0.05);
-            ctx.stroke();
-
-            // Dizzy/Defeated squiggly mouth
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            const mouthY = e.y + e.radius * 0.25;
-            ctx.moveTo(e.x - e.radius * 0.2, mouthY);
-            ctx.bezierCurveTo(e.x - e.radius * 0.1, mouthY - 8, e.x + e.radius * 0.1, mouthY + 8, e.x + e.radius * 0.2, mouthY);
-            ctx.stroke();
-          } else {
-            // Angry Eyebrows
             ctx.strokeStyle = "#000000";
-            ctx.lineWidth = 4;
-            ctx.lineCap = "round";
-
-            // Left Eyebrow
-            ctx.beginPath();
-            ctx.moveTo(e.x - e.radius * 0.45, e.y - e.radius * 0.38);
-            ctx.lineTo(e.x - e.radius * 0.1, e.y - e.radius * 0.22);
+            ctx.lineWidth = 2.5;
             ctx.stroke();
 
-            // Right Eyebrow
-            ctx.beginPath();
-            ctx.moveTo(e.x + e.radius * 0.45, e.y - e.radius * 0.38);
-            ctx.lineTo(e.x + e.radius * 0.1, e.y - e.radius * 0.22);
-            ctx.stroke();
-
-            // Left glowing red/yellow eye
-            ctx.fillStyle = "#ef4444";
-            ctx.beginPath();
-            ctx.ellipse(e.x - e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.16, e.radius * 0.08, -Math.PI / 10, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Right glowing red/yellow eye
-            ctx.fillStyle = "#ef4444";
-            ctx.beginPath();
-            ctx.ellipse(e.x + e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.16, e.radius * 0.08, Math.PI / 10, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Eye Pupils (glowing white slits)
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.ellipse(e.x - e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.04, e.radius * 0.08, -Math.PI / 10, 0, Math.PI * 2);
-            ctx.ellipse(e.x + e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.04, e.radius * 0.08, Math.PI / 10, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Demonic mouth (cruel grin)
-            ctx.strokeStyle = "#000000";
+            // 2. 찡그린 미간 주름 (Angry Forehead Wrinkles)
+            ctx.strokeStyle = "#ef4444"; // 붉은 핏줄/화난 주름 연출
             ctx.lineWidth = 3;
+            ctx.lineCap = "round";
+            
+            // 미간 중앙 가로 주름들
+            ctx.beginPath();
+            ctx.moveTo(e.x - e.radius * 0.2, e.y - e.radius * 0.3);
+            ctx.lineTo(e.x + e.radius * 0.2, e.y - e.radius * 0.3);
+            ctx.moveTo(e.x - e.radius * 0.15, e.y - e.radius * 0.22);
+            ctx.lineTo(e.x + e.radius * 0.15, e.y - e.radius * 0.22);
+            ctx.stroke();
+
+            // 3. 치켜뜬 성난 고릴라 눈 (Super Angry Glowing Eyes)
+            // 눈 테두리 (검정)
             ctx.fillStyle = "#000000";
             ctx.beginPath();
-            ctx.arc(e.x, e.y + e.radius * 0.25, e.radius * 0.25, 0, Math.PI, false);
+            ctx.arc(e.x - e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.18, 0, Math.PI * 2);
+            ctx.arc(e.x + e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.18, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 눈 내부 불타는 붉은색/노란색 그라데이션 광기
+            ctx.fillStyle = "#f43f5e"; // Rose 500
+            ctx.beginPath();
+            ctx.ellipse(e.x - e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.15, e.radius * 0.08, -Math.PI / 8, 0, Math.PI * 2);
+            ctx.ellipse(e.x + e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.15, e.radius * 0.08, Math.PI / 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 이글거리는 노란 눈동자
+            ctx.fillStyle = "#fbbf24"; // Amber 400
+            ctx.beginPath();
+            ctx.arc(e.x - e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.06, 0, Math.PI * 2);
+            ctx.arc(e.x + e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.06, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 4. 강하게 찌푸린 눈썹 (Strong Angry Eyebrows)
+            ctx.strokeStyle = "#000000";
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            // 왼쪽 눈썹 (바깥에서 중앙 아래로 급경사)
+            ctx.moveTo(e.x - e.radius * 0.5, e.y - e.radius * 0.28);
+            ctx.lineTo(e.x - e.radius * 0.12, e.y - e.radius * 0.14);
+            // 오른쪽 눈썹
+            ctx.moveTo(e.x + e.radius * 0.5, e.y - e.radius * 0.28);
+            ctx.lineTo(e.x + e.radius * 0.12, e.y - e.radius * 0.14);
             ctx.stroke();
 
-            // Teeth inside the mouth for final boss
-            if (e.type === "FINAL_BOSS") {
+            // 5. 큼직한 고릴라 콧구멍 (Gorilla Flared Nostrils)
+            ctx.fillStyle = "#090514";
+            ctx.beginPath();
+            ctx.ellipse(e.x - e.radius * 0.08, e.y + e.radius * 0.1, e.radius * 0.08, e.radius * 0.05, -Math.PI/6, 0, Math.PI * 2);
+            ctx.ellipse(e.x + e.radius * 0.08, e.y + e.radius * 0.1, e.radius * 0.08, e.radius * 0.05, Math.PI/6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 콧구멍 찡그린 선들
+            ctx.strokeStyle = "#475569";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(e.x - e.radius * 0.12, e.y + e.radius * 0.02);
+            ctx.lineTo(e.x, e.y + e.radius * 0.08);
+            ctx.lineTo(e.x + e.radius * 0.12, e.y + e.radius * 0.02);
+            ctx.stroke();
+
+            // 6. 극도로 화난 입과 사나운 송곳니 (Roaring Mouth & Fangs)
+            // 벌린 거대한 입 모양 (으르렁거리는 타원형)
+            ctx.fillStyle = "#090514"; // 입속 어둠
+            ctx.strokeStyle = "#000000";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(e.x, e.y + e.radius * 0.38, e.radius * 0.38, e.radius * 0.18, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // 빨간 혀
+            ctx.fillStyle = "#f43f5e";
+            ctx.beginPath();
+            ctx.ellipse(e.x, e.y + e.radius * 0.46, e.radius * 0.22, e.radius * 0.08, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 뾰족하고 거대한 송곳니 그리기 (Fangs)
+            ctx.fillStyle = "#ffffff";
+            const drawGorillaFang = (fx: number, fy: number, sizeW: number, sizeH: number, isUpper: boolean) => {
+              ctx.beginPath();
+              ctx.moveTo(fx - sizeW / 2, fy);
+              ctx.lineTo(fx + sizeW / 2, fy);
+              ctx.lineTo(fx, isUpper ? fy + sizeH : fy - sizeH);
+              ctx.closePath();
+              ctx.fill();
+            };
+
+            // 윗니 송곳니 (양옆 크게 2개)
+            drawGorillaFang(e.x - e.radius * 0.24, e.y + e.radius * 0.24, e.radius * 0.1, e.radius * 0.15, true);
+            drawGorillaFang(e.x + e.radius * 0.24, e.y + e.radius * 0.24, e.radius * 0.1, e.radius * 0.15, true);
+            // 아랫니 송곳니 (가운데 크게 2개 올라옴)
+            drawGorillaFang(e.x - e.radius * 0.12, e.y + e.radius * 0.5, e.radius * 0.08, e.radius * 0.14, false);
+            drawGorillaFang(e.x + e.radius * 0.12, e.y + e.radius * 0.5, e.radius * 0.08, e.radius * 0.14, false);
+
+            // 소형 이빨 가이드 (자잘하게 채우기)
+            drawGorillaFang(e.x - e.radius * 0.04, e.y + e.radius * 0.24, e.radius * 0.06, e.radius * 0.08, true);
+            drawGorillaFang(e.x + e.radius * 0.04, e.y + e.radius * 0.24, e.radius * 0.06, e.radius * 0.08, true);
+          } else {
+            if (g.cinematic && g.cinematic.type === "victory" && e === g.cinematic.bossId) {
+              // --- DIZZY DEFEATED VICTORY EXPRESSION (X - X) ---
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineWidth = 4.5;
+              ctx.lineCap = "round";
+
+              // Left X eye
+              ctx.beginPath();
+              ctx.moveTo(e.x - e.radius * 0.35, e.y - e.radius * 0.25);
+              ctx.lineTo(e.x - e.radius * 0.15, e.y - e.radius * 0.05);
+              ctx.moveTo(e.x - e.radius * 0.15, e.y - e.radius * 0.25);
+              ctx.lineTo(e.x - e.radius * 0.35, e.y - e.radius * 0.05);
+              ctx.stroke();
+
+              // Right X eye
+              ctx.beginPath();
+              ctx.moveTo(e.x + e.radius * 0.15, e.y - e.radius * 0.25);
+              ctx.lineTo(e.x + e.radius * 0.35, e.y - e.radius * 0.05);
+              ctx.moveTo(e.x + e.radius * 0.35, e.y - e.radius * 0.25);
+              ctx.lineTo(e.x + e.radius * 0.15, e.y - e.radius * 0.05);
+              ctx.stroke();
+
+              // Dizzy/Defeated squiggly mouth
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              const mouthY = e.y + e.radius * 0.25;
+              ctx.moveTo(e.x - e.radius * 0.2, mouthY);
+              ctx.bezierCurveTo(e.x - e.radius * 0.1, mouthY - 8, e.x + e.radius * 0.1, mouthY + 8, e.x + e.radius * 0.2, mouthY);
+              ctx.stroke();
+            } else {
+              // Angry Eyebrows
+              ctx.strokeStyle = "#000000";
+              ctx.lineWidth = 4;
+              ctx.lineCap = "round";
+
+              // Left Eyebrow
+              ctx.beginPath();
+              ctx.moveTo(e.x - e.radius * 0.45, e.y - e.radius * 0.38);
+              ctx.lineTo(e.x - e.radius * 0.1, e.y - e.radius * 0.22);
+              ctx.stroke();
+
+              // Right Eyebrow
+              ctx.beginPath();
+              ctx.moveTo(e.x + e.radius * 0.45, e.y - e.radius * 0.38);
+              ctx.lineTo(e.x + e.radius * 0.1, e.y - e.radius * 0.22);
+              ctx.stroke();
+
+              // Left glowing red/yellow eye
+              ctx.fillStyle = "#ef4444";
+              ctx.beginPath();
+              ctx.ellipse(e.x - e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.16, e.radius * 0.08, -Math.PI / 10, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Right glowing red/yellow eye
+              ctx.fillStyle = "#ef4444";
+              ctx.beginPath();
+              ctx.ellipse(e.x + e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.16, e.radius * 0.08, Math.PI / 10, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Eye Pupils (glowing white slits)
               ctx.fillStyle = "#ffffff";
-              // Draw simple little sharp white triangles for teeth
-              const drawTooth = (tx: number, ty: number, tSize: number, up: boolean) => {
-                ctx.beginPath();
-                ctx.moveTo(tx - tSize / 2, ty);
-                ctx.lineTo(tx + tSize / 2, ty);
-                ctx.lineTo(tx, up ? ty + tSize : ty - tSize);
-                ctx.closePath();
-                ctx.fill();
-              };
-              drawTooth(e.x - 8, e.y + e.radius * 0.25, 6, true);
-              drawTooth(e.x + 8, e.y + e.radius * 0.25, 6, true);
+              ctx.beginPath();
+              ctx.ellipse(e.x - e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.04, e.radius * 0.08, -Math.PI / 10, 0, Math.PI * 2);
+              ctx.ellipse(e.x + e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.04, e.radius * 0.08, Math.PI / 10, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Demonic mouth (cruel grin)
+              ctx.strokeStyle = "#000000";
+              ctx.lineWidth = 3;
+              ctx.fillStyle = "#000000";
+              ctx.beginPath();
+              ctx.arc(e.x, e.y + e.radius * 0.25, e.radius * 0.25, 0, Math.PI, false);
+              ctx.stroke();
+
+              // Teeth inside the mouth for final boss
+              if (e.type === "FINAL_BOSS") {
+                ctx.fillStyle = "#ffffff";
+                // Draw simple little sharp white triangles for teeth
+                const drawTooth = (tx: number, ty: number, tSize: number, up: boolean) => {
+                  ctx.beginPath();
+                  ctx.moveTo(tx - tSize / 2, ty);
+                  ctx.lineTo(tx + tSize / 2, ty);
+                  ctx.lineTo(tx, up ? ty + tSize : ty - tSize);
+                  ctx.closePath();
+                  ctx.fill();
+                };
+                drawTooth(e.x - 8, e.y + e.radius * 0.25, 6, true);
+                drawTooth(e.x + 8, e.y + e.radius * 0.25, 6, true);
+              }
             }
           }
         }
@@ -4012,84 +4839,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.restore();
         }
 
-        // Draw custom warning zones for special patterns (Monkey & Gorilla Bosses)
-        if (e.drawWarningArea) {
-          ctx.save();
-          if (e.drawWarningArea.type === "AIMING" || e.drawWarningArea.type === "GORILLA_AIMING") {
-            // Target Aiming Red Laser Line (1초 조준)
-            ctx.strokeStyle = "rgba(239, 68, 68, 0.85)";
-            ctx.lineWidth = 3;
-            ctx.setLineDash([6, 4]);
-            ctx.beginPath();
-            ctx.moveTo(e.x, e.y);
-            ctx.lineTo(e.drawWarningArea.aimX, e.drawWarningArea.aimY);
-            ctx.stroke();
-
-            // Intersecting target crosshair
-            ctx.setLineDash([]);
-            ctx.fillStyle = "rgba(239, 68, 68, 0.35)";
-            ctx.beginPath();
-            ctx.arc(e.drawWarningArea.aimX, e.drawWarningArea.aimY, 14, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.strokeStyle = "#ef4444";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(e.drawWarningArea.aimX, e.drawWarningArea.aimY, 14, 0, Math.PI * 2);
-            ctx.stroke();
-          } else if (e.drawWarningArea.type === "GORILLA_JUMP") {
-            const flashIntensity = Math.abs(Math.sin(Date.now() / 120)); // fast pulsing
-            ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + flashIntensity * 0.25})`;
-            ctx.beginPath();
-            ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.strokeStyle = `rgba(239, 68, 68, ${0.7 + flashIntensity * 0.3})`;
-            ctx.lineWidth = 2.5;
-            ctx.setLineDash([8, 4]);
-            ctx.beginPath();
-            ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
-            ctx.stroke();
-
-            // Small crosshair indicator at center of jump
-            ctx.setLineDash([]);
-            ctx.strokeStyle = "#ef4444";
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(e.drawWarningArea.targetX - 10, e.drawWarningArea.targetY);
-            ctx.lineTo(e.drawWarningArea.targetX + 10, e.drawWarningArea.targetY);
-            ctx.moveTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY - 10);
-            ctx.lineTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY + 10);
-            ctx.stroke();
-          } else if (e.drawWarningArea.type === "HALF_HP_PREPARING") {
-            // Half HP Giant Slam Warning Circle (2초 광역 점멸 경고)
-            const flashIntensity = Math.abs(Math.sin(Date.now() / 150)); // fast pulsing
-            
-            // Draw transparent warning body
-            ctx.fillStyle = `rgba(239, 68, 68, ${0.15 + flashIntensity * 0.2})`;
-            ctx.beginPath();
-            ctx.arc(e.x, e.y, e.drawWarningArea.radius, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Draw red dotted outer warning boundary
-            ctx.strokeStyle = `rgba(239, 68, 68, ${0.6 + flashIntensity * 0.4})`;
-            ctx.lineWidth = 3;
-            ctx.setLineDash([10, 5]);
-            ctx.beginPath();
-            ctx.arc(e.x, e.y, e.drawWarningArea.radius, 0, Math.PI * 2);
-            ctx.stroke();
-            
-            // Draw countdown timer text above the boss
-            ctx.setLineDash([]);
-            ctx.fillStyle = "#ffffff";
-            ctx.font = "900 11px sans-serif";
-            ctx.textAlign = "center";
-            const secsLeft = Math.max(0, e.drawWarningArea.timer / 1000).toFixed(1);
-            ctx.fillText(`🚨 광역 지진 발동 대기: ${secsLeft}초 🚨`, e.x, e.y - e.radius - 20);
-          }
-          ctx.restore();
-        }
-
         ctx.restore();
       } else {
         // Draw shiny ring for elite bosses
@@ -4103,29 +4852,75 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.setLineDash([]);
         }
 
-        // Body core
-        ctx.fillStyle = e.color;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-        ctx.fill();
+        // Draw tombstone if spawning SUMMONED_ZOMBIE
+        if (e.type === "SUMMONED_ZOMBIE" && e.tombstoneTimer && e.tombstoneTimer > 0) {
+          ctx.save();
+          // Tombstone rising effect based on remaining timer (grows/fades in)
+          const ratio = Math.min(1.0, (1000 - e.tombstoneTimer) / 1000); // 0.0 to 1.0
+          ctx.globalAlpha = ratio;
+          ctx.fillStyle = "#64748b"; // slate-grey headstone
+          ctx.strokeStyle = "#475569";
+          ctx.lineWidth = 2;
+          const tw = e.radius * 1.5;
+          const th = e.radius * 2.2 * ratio; // rise up from bottom
+          
+          // Draw tombstone shape (arch top, flat bottom)
+          ctx.beginPath();
+          ctx.moveTo(e.x - tw / 2, e.y + e.radius); // bottom-left
+          ctx.lineTo(e.x - tw / 2, e.y + e.radius - th * 0.9); // up left side
+          ctx.quadraticCurveTo(e.x, e.y + e.radius - th * 1.5, e.x + tw / 2, e.y + e.radius - th * 0.9); // arch top
+          ctx.lineTo(e.x + tw / 2, e.y + e.radius); // down right side
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
 
-        // Outward stroke
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+          // Draw RIP cross on headstone
+          ctx.strokeStyle = "#334155";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          // vertical line of cross
+          ctx.moveTo(e.x, e.y + e.radius - th * 0.7);
+          ctx.lineTo(e.x, e.y + e.radius - th * 0.1);
+          // horizontal line of cross
+          ctx.moveTo(e.x - tw * 0.2, e.y + e.radius - th * 0.55);
+          ctx.lineTo(e.x + tw * 0.2, e.y + e.radius - th * 0.55);
+          ctx.stroke();
 
-        // Angry Eyes representation
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(e.x - e.radius * 0.3, e.y - e.radius * 0.2, e.radius * 0.18, 0, Math.PI * 2);
-        ctx.arc(e.x + e.radius * 0.3, e.y - e.radius * 0.2, e.radius * 0.18, 0, Math.PI * 2);
-        ctx.fill();
+          // Draw some dirt/earth at base
+          ctx.fillStyle = "#78350f"; // brown dirt
+          ctx.beginPath();
+          ctx.ellipse(e.x, e.y + e.radius, tw * 0.7, th * 0.2, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        } else {
+          if (e.type === "SUMMONED_ZOMBIE") {
+            drawZombieHead(ctx, e.x, e.y, e.radius, false);
+          } else {
+            // Body core
+            ctx.fillStyle = e.color;
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+            ctx.fill();
 
-        ctx.fillStyle = "#000000";
-        ctx.beginPath();
-        ctx.arc(e.x - e.radius * 0.26, e.y - e.radius * 0.18, e.radius * 0.08, 0, Math.PI * 2);
-        ctx.arc(e.x + e.radius * 0.34, e.y - e.radius * 0.18, e.radius * 0.08, 0, Math.PI * 2);
-        ctx.fill();
+            // Outward stroke
+            ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Angry Eyes representation
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(e.x - e.radius * 0.3, e.y - e.radius * 0.2, e.radius * 0.18, 0, Math.PI * 2);
+            ctx.arc(e.x + e.radius * 0.3, e.y - e.radius * 0.2, e.radius * 0.18, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = "#000000";
+            ctx.beginPath();
+            ctx.arc(e.x - e.radius * 0.26, e.y - e.radius * 0.18, e.radius * 0.08, 0, Math.PI * 2);
+            ctx.arc(e.x + e.radius * 0.34, e.y - e.radius * 0.18, e.radius * 0.08, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
       }
 
       // Health bar above hard/elite enemies
@@ -4144,6 +4939,157 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       ctx.restore();
+    });
+
+    // 5-2. Draw Boss & Enemy Attack Warning Zones (모든 몬스터 본체 렌더링 후 최상위에 표시하여 가려짐 방지)
+    g.enemies.forEach((e: any) => {
+      // 1) Out of screen GORILLA_JUMP indicator
+      if (e.isOutOfScreen && e.drawWarningArea && e.drawWarningArea.type === "GORILLA_JUMP") {
+        ctx.save();
+        const flashIntensity = Math.abs(Math.sin(Date.now() / 100));
+        ctx.fillStyle = `rgba(239, 68, 68, ${0.3 + flashIntensity * 0.35})`;
+        ctx.beginPath();
+        ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = `rgba(255, 30, 30, ${0.8 + flashIntensity * 0.2})`;
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 5]);
+        ctx.beginPath();
+        ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+        ctx.strokeStyle = "#ff0000";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(e.drawWarningArea.targetX - 15, e.drawWarningArea.targetY);
+        ctx.lineTo(e.drawWarningArea.targetX + 15, e.drawWarningArea.targetY);
+        ctx.moveTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY - 15);
+        ctx.lineTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY + 15);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 2) Charging or Slam Prep warning circle & dash line
+      if (e.state === "CHARGING" || e.state === "SLAM_PREP") {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 20, 20, 0.85)";
+        ctx.fillStyle = "rgba(255, 20, 20, 0.18)";
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius * 2 + Math.sin(Date.now() / 40) * 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        if (e.patternType === "DASH" && e.dashDx !== undefined) {
+          ctx.strokeStyle = "rgba(255, 10, 10, 0.85)";
+          ctx.lineWidth = 5;
+          ctx.setLineDash([8, 6]);
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y);
+          ctx.lineTo(e.x + e.dashDx * 300, e.y + e.dashDy * 300);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+      }
+
+      // 3) Custom drawWarningArea (Aiming Laser, Gorilla Aiming, Gorilla Jump, Half HP Giant Slam)
+      if (e.drawWarningArea && !e.isOutOfScreen) {
+        ctx.save();
+        if (e.drawWarningArea.type === "AIMING" || e.drawWarningArea.type === "GORILLA_AIMING") {
+          ctx.strokeStyle = "rgba(255, 0, 0, 0.95)";
+          ctx.lineWidth = 4.5;
+          ctx.setLineDash([8, 4]);
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y);
+          ctx.lineTo(e.drawWarningArea.aimX, e.drawWarningArea.aimY);
+          ctx.stroke();
+
+          ctx.setLineDash([]);
+          ctx.fillStyle = "rgba(255, 0, 0, 0.45)";
+          ctx.beginPath();
+          ctx.arc(e.drawWarningArea.aimX, e.drawWarningArea.aimY, 18, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = "#ff0000";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(e.drawWarningArea.aimX, e.drawWarningArea.aimY, 18, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (e.drawWarningArea.type === "GORILLA_JUMP") {
+          const flashIntensity = Math.abs(Math.sin(Date.now() / 100));
+          ctx.fillStyle = `rgba(255, 30, 30, ${0.25 + flashIntensity * 0.35})`;
+          ctx.beginPath();
+          ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = `rgba(255, 0, 0, ${0.8 + flashIntensity * 0.2})`;
+          ctx.lineWidth = 4;
+          ctx.setLineDash([10, 5]);
+          ctx.beginPath();
+          ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.setLineDash([]);
+          ctx.strokeStyle = "#ff0000";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(e.drawWarningArea.targetX - 15, e.drawWarningArea.targetY);
+          ctx.lineTo(e.drawWarningArea.targetX + 15, e.drawWarningArea.targetY);
+          ctx.moveTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY - 15);
+          ctx.lineTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY + 15);
+          ctx.stroke();
+        } else if (e.drawWarningArea.type === "HALF_HP_PREPARING") {
+          const flashIntensity = Math.abs(Math.sin(Date.now() / 120));
+          ctx.fillStyle = `rgba(255, 0, 0, ${0.22 + flashIntensity * 0.28})`;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.drawWarningArea.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = `rgba(255, 10, 10, ${0.7 + flashIntensity * 0.3})`;
+          ctx.lineWidth = 4.5;
+          ctx.setLineDash([12, 6]);
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.drawWarningArea.radius, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.setLineDash([]);
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "900 13px sans-serif";
+          ctx.textAlign = "center";
+          const secsLeft = Math.max(0, e.drawWarningArea.timer / 1000).toFixed(1);
+          ctx.fillText(`🚨 광역 지진 발동 대기: ${secsLeft}초 🚨`, e.x, e.y - e.radius - 25);
+        } else if (e.drawWarningArea.type === "FATTY_FAN_WARNING") {
+          const flashIntensity = Math.abs(Math.sin(Date.now() / 100));
+          const { angle, radius, spread } = e.drawWarningArea;
+          const startAngle = angle - spread / 2;
+          const endAngle = angle + spread / 2;
+
+          ctx.fillStyle = `rgba(239, 68, 68, ${0.18 + flashIntensity * 0.22})`; // red fan fill
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y);
+          ctx.arc(e.x, e.y, radius, startAngle, endAngle);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.strokeStyle = `rgba(239, 68, 68, ${0.7 + flashIntensity * 0.3})`; // red outer arc
+          ctx.lineWidth = 3.5;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, radius, startAngle, endAngle);
+          ctx.stroke();
+
+          // Border lines connecting boss to arc
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y);
+          ctx.lineTo(e.x + Math.cos(startAngle) * radius, e.y + Math.sin(startAngle) * radius);
+          ctx.moveTo(e.x, e.y);
+          ctx.lineTo(e.x + Math.cos(endAngle) * radius, e.y + Math.sin(endAngle) * radius);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
     });
 
     // 6. Draw Player
@@ -4256,6 +5202,58 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.arc(0, 0, p.damageRadius * 0.85, i * 2.1, i * 2.1 + 1.2);
           ctx.stroke();
         }
+      }
+
+      if (p.type === "SUPER_BLACK_HOLE") {
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.life || 0) * -0.01);
+        
+        // 1. Draw outer gravitational warning wave / distortion field
+        ctx.strokeStyle = "rgba(168, 85, 247, 0.25)";
+        ctx.lineWidth = 14;
+        ctx.shadowColor = "#a855f7";
+        ctx.shadowBlur = 35;
+        ctx.beginPath();
+        const waveRadius = p.pullRadius * (0.88 + Math.sin((p.life || 0) * 0.003) * 0.06);
+        ctx.arc(0, 0, waveRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 2. Draw outer nebula gas glow
+        const gradient = ctx.createRadialGradient(0, 0, p.damageRadius * 0.3, 0, 0, p.damageRadius * 1.8);
+        gradient.addColorStop(0, "rgba(2, 6, 23, 0.95)");
+        gradient.addColorStop(0.3, "rgba(79, 70, 229, 0.35)");
+        gradient.addColorStop(0.7, "rgba(219, 39, 119, 0.15)");
+        gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.damageRadius * 1.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 3. Draw event horizon line
+        ctx.strokeStyle = "#db2777";
+        ctx.lineWidth = 7;
+        ctx.shadowColor = "#f472b6";
+        ctx.shadowBlur = 25;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.damageRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 4. Draw accretion disk swirls (4 beautiful cosmic arms)
+        ctx.strokeStyle = "#a855f7";
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 4; i++) {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.damageRadius * 1.25, i * (Math.PI / 2), i * (Math.PI / 2) + 1.15);
+          ctx.stroke();
+        }
+
+        // 5. Singularity core (absolute pitch black abyss)
+        ctx.fillStyle = "#020617";
+        ctx.shadowColor = "#db2777";
+        ctx.shadowBlur = 55;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.damageRadius * 0.55, 0, Math.PI * 2);
+        ctx.fill();
       }
 
       if (p.type === "KUNAI") {
@@ -4417,6 +5415,44 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
       }
 
+      if (p.type === "DWARF_KNIFE") {
+        const angle = Math.atan2(p.dy, p.dx);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(angle);
+        ctx.fillStyle = "#e2e8f0";
+        ctx.strokeStyle = "#0891b2";
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = "#06b6d4";
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.moveTo(p.size, 0);
+        ctx.lineTo(-p.size * 0.6, -p.size * 0.4);
+        ctx.lineTo(-p.size * 0.6, p.size * 0.4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      if (p.type === "DWARF_GIANT_ARROW") {
+        const angle = Math.atan2(p.dy, p.dx);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(angle);
+        ctx.fillStyle = "#ef4444";
+        ctx.strokeStyle = "#7f1d1d";
+        ctx.lineWidth = 3;
+        ctx.shadowColor = "#dc2626";
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.moveTo(p.size, 0);
+        ctx.lineTo(0, -p.size * 0.45);
+        ctx.lineTo(p.size * 0.2, 0);
+        ctx.lineTo(0, p.size * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillRect(-p.size * 0.8, -4, p.size, 8);
+      }
+
       ctx.restore();
     });
 
@@ -4430,6 +5466,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.fill();
       ctx.restore();
     });
+
+    // Draw Boss Claw Slash Effects
+    if (g.claws) {
+      g.claws.forEach((claw: any) => {
+        ctx.save();
+        ctx.translate(claw.x, claw.y);
+        ctx.rotate(claw.angle);
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.95)";
+        ctx.lineWidth = 6 * (claw.timer / claw.maxTimer);
+        ctx.globalAlpha = claw.timer / claw.maxTimer;
+        ctx.lineCap = "round";
+        
+        // Add red glow effect to the slash marks for heavy impact feel
+        ctx.shadowColor = "#ef4444";
+        ctx.shadowBlur = 15;
+
+        const length = 120;
+        const spacing = 18;
+        for (let i = -1; i <= 1; i++) {
+          const offset = i * spacing;
+          ctx.beginPath();
+          ctx.moveTo(-length / 2, offset - 15);
+          ctx.quadraticCurveTo(0, offset + 15, length / 2, offset - 15);
+          ctx.stroke();
+        }
+        ctx.restore();
+      });
+    }
 
     // 9. Draw Floating Damage/Text Indicators
     g.damageTexts.forEach((t: any) => {
@@ -4859,34 +5923,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       {/* BOSS HEALTH INDICATOR BAR (shown on screen top-center if boss is active) */}
       {bossHealth && (
-        <div className="absolute top-44 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-lg px-4 animate-scale-up">
-          <div className="bg-slate-950/90 border border-red-500/40 p-3 rounded-2xl backdrop-blur-md shadow-[0_0_20px_rgba(239,68,68,0.25)] flex flex-col space-y-1.5">
-            <div className="flex justify-between items-center text-xs text-red-200 font-extrabold tracking-wide">
-              <span className="flex items-center space-x-1.5">
-                <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-ping mr-1" />
-                <span>{bossHealth.name}</span>
+        <div className="absolute top-36 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-xs px-2 animate-scale-up">
+          <div className="bg-slate-950/60 border border-red-500/20 p-2 rounded-xl backdrop-blur-sm shadow-[0_0_12px_rgba(239,68,68,0.15)] flex flex-col space-y-1">
+            <div className="flex justify-between items-center text-[10px] text-red-200 font-extrabold tracking-wide">
+              <span className="flex items-center space-x-1 max-w-[60%] truncate">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-ping mr-1" />
+                <span className="truncate">{bossHealth.name}</span>
               </span>
-              <span className="font-mono text-sm bg-red-500/10 border border-red-500/20 px-2.5 py-0.5 rounded-lg text-red-400 font-black">
+              <span className="font-mono text-[9px] bg-red-500/10 border border-red-500/10 px-1.5 py-0.5 rounded text-red-400 font-bold">
                 {bossHealth.current.toLocaleString()} / {bossHealth.max.toLocaleString()}
               </span>
             </div>
-            <div className="relative w-full h-3.5 bg-slate-900 border border-slate-800 rounded-full overflow-hidden p-0.5 flex">
+            <div className="relative w-full h-1.5 bg-slate-900 border border-slate-800/40 rounded-full overflow-hidden p-px flex">
               {/* Slow-catchup trailing damage bar */}
               <div
-                className="absolute top-0.5 left-0.5 bottom-0.5 rounded-full bg-red-400/40 transition-all duration-500 ease-out"
-                style={{ width: `calc(${(bossHealth.current / bossHealth.max) * 100}% - 4px)` }}
+                className="absolute top-px left-px bottom-px rounded-full bg-red-400/35 transition-all duration-500 ease-out"
+                style={{ width: `calc(${(bossHealth.current / bossHealth.max) * 100}% - 2px)` }}
               />
               {/* Main health bar */}
               <div
-                className="h-full rounded-full bg-gradient-to-r from-red-600 via-orange-500 to-yellow-400 transition-all duration-100 shadow-[0_0_10px_rgba(239,68,68,0.4)]"
+                className="h-full rounded-full bg-gradient-to-r from-red-600 to-amber-500 transition-all duration-100 shadow-[0_0_8px_rgba(239,68,68,0.2)]"
                 style={{ width: `${(bossHealth.current / bossHealth.max) * 100}%` }}
               />
-            </div>
-            {/* Health Percentage indicator */}
-            <div className="flex justify-center">
-              <span className="text-[10px] text-red-400/80 font-mono font-bold tracking-widest uppercase">
-                HEALTH CAPACITY: {Math.max(0, Math.ceil((bossHealth.current / bossHealth.max) * 100))}%
-              </span>
             </div>
           </div>
         </div>
@@ -5348,6 +6406,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 { id: WeaponType.LIGHTNING, name: "번개 발사기" },
                 { id: WeaponType.GATLING, name: "전설의 개틀링건" },
                 { id: WeaponType.POOP_SPRAY, name: "분노의 똥 뿌리기" },
+                { id: WeaponType.BOOMERANG, name: "부메랑" },
+                { id: WeaponType.EXCALIBUR, name: "전설의 성검 엑스칼리버" },
+                { id: WeaponType.BLACK_HOLE, name: "초중력 블랙홀 포" },
               ].map((w) => {
                 const current = equippedWeapons.find((x) => x.id === w.id);
                 const currentLevelText = current
@@ -5435,25 +6496,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   onClick={() => devSpawnBossExact(2)}
                   className="bg-rose-950/40 hover:bg-rose-950/60 border border-rose-900/30 py-1.5 rounded text-[8px] font-extrabold text-rose-300 cursor-pointer"
                 >
-                  🐒 2분 보스 (원숭이) 소환
+                  🐒 2분 보스 (돌격대장 원숭이) 소환
                 </button>
                 <button
                   onClick={() => devSpawnBossExact(4)}
                   className="bg-rose-950/40 hover:bg-rose-950/60 border border-rose-900/30 py-1.5 rounded text-[8px] font-extrabold text-rose-300 cursor-pointer"
                 >
-                  🦍 4분 보스 (고릴라) 소환
+                  🦍 4분 보스 (분조장 고릴라) 소환
                 </button>
                 <button
                   onClick={() => devSpawnBossExact(6)}
                   className="bg-rose-950/40 hover:bg-rose-950/60 border border-rose-900/30 py-1.5 rounded text-[8px] font-extrabold text-rose-300 cursor-pointer"
                 >
-                  🤖 6분 보스 (메탈골렘) 소환
+                  🏹 6분 보스 (원거리 딜러 난쟁이) 소환
                 </button>
                 <button
                   onClick={() => devSpawnBossExact(8)}
                   className="bg-rose-950/40 hover:bg-rose-950/60 border border-rose-900/30 py-1.5 rounded text-[8px] font-extrabold text-rose-300 cursor-pointer"
                 >
-                  🌌 8분 보스 (차원침략자) 소환
+                  🧟 8분 보스 (좀비 뚱돼지) 소환
                 </button>
               </div>
             </div>
