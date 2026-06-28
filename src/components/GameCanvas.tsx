@@ -69,6 +69,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [inGameMaxXP, setInGameMaxXP] = useState(30);
   const [inGameHP, setInGameHP] = useState(100);
   const [inGameMaxHP, setInGameMaxHP] = useState(100);
+  const [inGameShield, setInGameShield] = useState(100);
+  const [inGameMaxShield, setInGameMaxShield] = useState(100);
   const [inGameKills, setInGameKills] = useState(0);
   const [inGameTime, setInGameTime] = useState(0);
   const [inGameGold, setInGameGold] = useState(0);
@@ -100,6 +102,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   joystickForceRef.current = joystickForce;
   soundEnabledRef.current = soundEnabled;
 
+  // Developer mode helper to detect AI Studio environment
+  const isDevEnv =
+    typeof window !== "undefined" &&
+    (window.location.hostname.includes("ais-dev-") ||
+      window.location.hostname.includes("localhost") ||
+      window.location.hostname.includes("127.0.0.1") ||
+      (import.meta as any).env?.DEV);
+
+  const [showDevPanel, setShowDevPanel] = useState(false);
+  const [isGodModeState, setIsGodModeState] = useState(false);
+  const [isLevelLocked, setIsLevelLocked] = useState(false);
+  const [isNormalSpawnsDisabled, setIsNormalSpawnsDisabled] = useState(false);
+
   // Core Game State Variables (held in refs for high-frequency canvas access without re-renders)
   const gameState = useRef({
     player: {
@@ -108,6 +123,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       radius: 18,
       hp: 100,
       maxHp: 100,
+      shield: 100,
+      maxShield: 100,
+      lastDamageTime: 0,
       baseSpeed: 2.8,
       speedMultiplier: 1.0,
       atkMultiplier: 1.0,
@@ -119,6 +137,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       kills: 0,
       gold: 0,
       timeElapsed: 0,
+      isGodMode: false,
     },
     // Skill levels
     skills: {
@@ -144,7 +163,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     particles: [] as any[],
     damageTexts: [] as any[],
     screenShake: 0,
-    camera: { x: 0, y: 0 },
+    camera: { x: 0, y: 0, zoom: 1.0 },
+    cinematic: null as any,
+    levelLock: false,
+    disableNormalSpawns: false,
     dimensions: { width: 400, height: 600 },
     activeWeaponEvolutions: {} as Record<WeaponType, boolean>,
     nextBossSpawnTime: 60,
@@ -224,6 +246,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         radius: 18,
         hp: playerHpMod,
         maxHp: playerHpMod,
+        shield: 100,
+        maxShield: 100,
+        lastDamageTime: 0,
         baseSpeed: 2.8 * playerSpeedMod,
         speedMultiplier: 1.0,
         atkMultiplier: playerAtkMod,
@@ -235,6 +260,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         kills: 0,
         gold: 0,
         timeElapsed: 0,
+        isGodMode: isGodModeState,
       },
       skills: {
         weapons: {
@@ -260,7 +286,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       particles: [],
       damageTexts: [],
       screenShake: 0,
-      camera: { x: 0, y: 0 },
+      camera: { x: 0, y: 0, zoom: 1.0 },
+      cinematic: null as any,
+      levelLock: isLevelLocked,
+      disableNormalSpawns: isNormalSpawnsDisabled,
       dimensions: { width: canvasRef.current?.width || 400, height: canvasRef.current?.height || 600 },
       activeWeaponEvolutions: {
         [WeaponType.KUNAI]: false,
@@ -396,6 +425,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     setInGameMaxXP(g.player.maxXp);
     setInGameHP(Math.max(0, Math.ceil(g.player.hp)));
     setInGameMaxHP(Math.ceil(g.player.maxHp));
+    setInGameShield(Math.max(0, Math.ceil(g.player.shield)));
+    setInGameMaxShield(Math.ceil(g.player.maxShield));
     setInGameKills(g.player.kills);
     setInGameTime(g.player.timeElapsed);
     setInGameGold(g.player.gold);
@@ -725,6 +756,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // Level Up Check
   const checkLevelUp = () => {
     const g = gameState.current;
+    if (g.levelLock) {
+      if (g.player.xp >= g.player.maxXp) {
+        g.player.xp = g.player.maxXp - 1;
+        updateReactHUD();
+      }
+      return;
+    }
     if (g.player.xp >= g.player.maxXp) {
       g.player.xp -= g.player.maxXp;
       g.player.level += 1;
@@ -762,9 +800,202 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
   }, [isPaused, showReinforceModal]);
 
+  const damagePlayer = (amount: number) => {
+    const g = gameState.current;
+    if (g.player.isGodMode || g.cinematic || g.isEnded) return;
+
+    g.player.lastDamageTime = Date.now();
+
+    // Shield check
+    if (g.player.shield > 0) {
+      if (g.player.shield >= amount) {
+        g.player.shield -= amount;
+        amount = 0;
+      } else {
+        amount -= g.player.shield;
+        g.player.shield = 0;
+      }
+    }
+
+    if (amount > 0) {
+      g.player.hp -= amount;
+      if (g.player.hp <= 0) {
+        g.player.hp = 0;
+        g.cinematic = {
+          type: "player_death",
+          timer: 1800,
+          maxTimer: 1800,
+        };
+        soundEngine.playGameOver();
+      }
+    }
+    updateReactHUD();
+  };
+
   // Main update physics
   const updateGame = (delta: number) => {
     const g = gameState.current;
+
+    // Apply God Mode protection
+    if (g.player.isGodMode) {
+      g.player.hp = g.player.maxHp;
+    }
+
+    // Shield regeneration check (10 seconds no damage)
+    if (g.player.shield < g.player.maxShield) {
+      if (Date.now() - (g.player.lastDamageTime || 0) >= 10000) {
+        g.player.shield = Math.min(g.player.maxShield, g.player.shield + g.player.maxShield * (delta / 2000));
+        updateReactHUD();
+      }
+    }
+
+    // Cinematic updates (Timeout / Victory for Final Boss)
+    if (g.cinematic) {
+      g.cinematic.timer -= delta;
+      const finalBoss = g.enemies.find((e: any) => e.type === "FINAL_BOSS") || g.cinematic.bossId;
+      
+      if (finalBoss) {
+        // Center camera on the Final Boss
+        g.camera.x += (finalBoss.x - g.camera.x - g.dimensions.width / 2) * 0.1;
+        g.camera.y += (finalBoss.y - g.camera.y - g.dimensions.height / 2) * 0.1;
+        
+        // Zoom camera in gradually
+        const progress = 1.0 - Math.max(0, g.cinematic.timer) / g.cinematic.maxTimer;
+        g.camera.zoom = 1.0 + progress * 0.8; // scales up to 1.8x
+        
+        if (g.cinematic.type === "timeout") {
+          g.screenShake = 12; // Heavy shaking
+          finalBoss.puffScale = 1.0 + progress * 1.5; // swells up to 2.5x size
+          
+          // Flash colors rapidly
+          if (Math.floor(Date.now() / 80) % 2 === 0) {
+            finalBoss.color = "#ef4444"; // Red flash
+          } else {
+            finalBoss.color = "#fbbf24"; // Gold flash
+          }
+          
+          // Combustion spark particles shooting out of swelling boss
+          if (Math.random() < 0.45) {
+            const randAngle = Math.random() * Math.PI * 2;
+            const dist = finalBoss.radius * (finalBoss.puffScale || 1.0) * Math.random();
+            g.particles.push({
+              x: finalBoss.x + Math.cos(randAngle) * dist,
+              y: finalBoss.y + Math.sin(randAngle) * dist,
+              dx: (Math.random() - 0.5) * 4,
+              dy: (Math.random() - 0.5) * 4,
+              size: 6 + Math.random() * 12,
+              color: Math.random() < 0.5 ? "rgba(239, 68, 68, 0.85)" : "rgba(253, 224, 71, 0.85)",
+              life: 0.6 + Math.random() * 0.4,
+              decay: 0.02 + Math.random() * 0.02,
+            });
+          }
+        } else if (g.cinematic.type === "victory") {
+          // Boss dizzy shake/shivering on victory cinematic
+          finalBoss.x += (Math.random() - 0.5) * 4;
+          finalBoss.y += (Math.random() - 0.5) * 4;
+          
+          // Spawn dead spark particles slowly
+          if (Math.random() < 0.25) {
+            const randAngle = Math.random() * Math.PI * 2;
+            g.particles.push({
+              x: finalBoss.x + Math.cos(randAngle) * finalBoss.radius * Math.random(),
+              y: finalBoss.y + Math.sin(randAngle) * finalBoss.radius * Math.random(),
+              dx: (Math.random() - 0.5) * 1.5,
+              dy: (Math.random() - 0.5) * 1.5,
+              size: 3 + Math.random() * 4,
+              color: "rgba(255, 255, 255, 0.5)",
+              life: 0.5 + Math.random() * 0.3,
+              decay: 0.04,
+            });
+          }
+        }
+      }
+      
+      // Update particles, projectiles and floating texts even in cinematic
+      updateParticles();
+      updateDamageTexts();
+      updateProjectiles(delta);
+      
+      // Keep updating enemies for the final boss state checks (specifically for the victory filter check)
+      if (g.cinematic.type === "victory") {
+        g.projectiles = []; // 플레이어 공격 탄환을 지워 보스 사망 모션을 더 잘 관찰할 수 있게 함
+        updateEnemies(delta);
+      }
+      
+      // Screen shake decay in cinematic
+      if (g.screenShake > 0) {
+        g.screenShake -= 0.1 * (delta / 16.6);
+        if (g.screenShake < 0) g.screenShake = 0;
+      }
+
+      if (g.cinematic.type === "timeout_aftermath") {
+        g.cinematic.tick = (g.cinematic.tick || 0) + 1;
+        if (g.cinematic.tick % 2 === 0) {
+          const bx = g.cinematic.bossX ?? g.player.x;
+          const by = g.cinematic.bossY ?? (g.player.y - 120);
+          const baseAngle = (Date.now() * 0.006) % (Math.PI * 2);
+          for (let k = 0; k < 18; k++) {
+            const angle = baseAngle + (k * Math.PI * 2) / 18;
+            g.particles.push({
+              x: bx,
+              y: by,
+              dx: Math.cos(angle) * 15,
+              dy: Math.sin(angle) * 15,
+              size: 8 + (k % 4),
+              color: k % 3 === 0 ? "#ef4444" : k % 3 === 1 ? "#fbbf24" : "#a855f7",
+              life: 1.4,
+              decay: 0.008,
+            });
+          }
+        }
+        g.screenShake = Math.max(g.screenShake, 18);
+      }
+
+      if (g.cinematic.type === "player_death" || g.cinematic.type === "timeout_aftermath") {
+        if (g.cinematic.timer <= 0) {
+          endGame(false);
+        }
+        return;
+      }
+      
+      // Handle timeout explosion triggers
+      if (g.cinematic.type === "timeout" && g.cinematic.timer <= 0) {
+        let bx = g.player.x;
+        let by = g.player.y - 120;
+        if (finalBoss) {
+          bx = finalBoss.x;
+          by = finalBoss.y;
+          g.particles.push(...createExplosion(finalBoss.x, finalBoss.y, "#ef4444", 185));
+          for (let i = 0; i < 60; i++) {
+            const angle = (i * Math.PI * 2) / 60;
+            g.particles.push({
+              x: finalBoss.x,
+              y: finalBoss.y,
+              dx: Math.cos(angle) * 12,
+              dy: Math.sin(angle) * 12,
+              size: 8,
+              color: "#fbbf24",
+              life: 1.0,
+              decay: 0.015,
+            });
+          }
+          finalBoss.hp = 0;
+          g.enemies = g.enemies.filter((e: any) => e !== finalBoss);
+        }
+        g.screenShake = 55;
+        g.cinematic = {
+          type: "timeout_aftermath",
+          timer: 3500,
+          maxTimer: 3500,
+          bossX: bx,
+          bossY: by,
+          tick: 0,
+        };
+        return;
+      }
+      
+      return;
+    }
 
     // Screen Shake decay
     if (g.screenShake > 0) {
@@ -834,12 +1065,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         g.player.gold += Math.floor(10 * goldMultiplier);
       }
 
-      // Check for BOSS spawning: robustly spawn every 120s (60, 180, 300, 420, 540) if none is alive on screen
+      // Check for BOSS spawning: robustly spawn every 60s (60, 120, 180, 240, 300, 360...) exactly when the milestone is reached
       if (g.player.timeElapsed >= g.nextBossSpawnTime && g.player.timeElapsed < 600) {
-        if (g.enemies.filter(e => e.type === "BOSS").length === 0) {
-          spawnBoss();
-          g.nextBossSpawnTime += 120;
-        }
+        spawnBoss();
+        g.nextBossSpawnTime += 60;
       }
 
       // Check Final Boss spawning at 10 minutes (600s)
@@ -851,7 +1080,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (g.finalBossActive) {
         g.finalBossTimer -= 1;
         if (g.finalBossTimer <= 0) {
-          endGame(false); // Game Over (Timeout)
+          // Trigger the timeout cinematic sequence!
+          const finalBoss = g.enemies.find((e: any) => e.type === "FINAL_BOSS");
+          if (finalBoss && !g.cinematic) {
+            g.cinematic = {
+              type: "timeout",
+              timer: 3000,
+              maxTimer: 3000,
+              bossId: finalBoss,
+            };
+            g.finalBossActive = false; // Stop timer countdown
+            setBossHealth(null); // Hide health bar
+          } else {
+            // Fallback if final boss is already killed/not found
+            endGame(false);
+          }
           return;
         }
       }
@@ -863,13 +1106,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const spawnRate = Math.max(250, 1200 - Math.floor(g.player.timeElapsed / 10) * 80);
     if (g.timers.enemySpawn >= spawnRate) {
       g.timers.enemySpawn = 0;
-      // Do not spawn infinite normal enemies during boss fights to avoid clustering
-      if (g.enemies.filter(e => e.type === "BOSS").length === 0) {
-        // Spawn more enemies simultaneously as elapsed time grows!
-        const baseSpawnCount = 1 + Math.floor(g.player.timeElapsed / 45);
-        const spawnCount = Math.min(6, baseSpawnCount);
-        for (let i = 0; i < spawnCount; i++) {
-          spawnEnemies();
+      // Respect disableNormalSpawns toggle
+      if (!g.disableNormalSpawns) {
+        // Do not spawn infinite normal enemies during boss fights to avoid clustering
+        if (g.enemies.filter(e => e.type === "BOSS").length === 0) {
+          // Spawn more enemies simultaneously as elapsed time grows!
+          const baseSpawnCount = 1 + Math.floor(g.player.timeElapsed / 45);
+          const spawnCount = Math.min(6, baseSpawnCount);
+          for (let i = 0; i < spawnCount; i++) {
+            spawnEnemies();
+          }
         }
       }
     }
@@ -943,7 +1189,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             distance: 65 + guardianData.level * 8,
             speed: 0.04 + (guardianData.isEvo ? 0.03 : guardianData.level * 0.005),
             size: guardianData.isEvo ? 24 : 12 + guardianData.level * 2,
-            damage: (12 + guardianData.level * 6) * g.player.atkMultiplier,
+            damage: (25 + guardianData.level * 15) * g.player.atkMultiplier * (guardianData.isEvo ? 2.2 : 1),
             color: guardianData.isEvo ? "#f59e0b" : "#10b981", // Amber for Evo, Emerald for normal
           });
         }
@@ -1012,10 +1258,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const fireKunai = (wpnData: any) => {
     const g = gameState.current;
-    if (g.enemies.length === 0) return;
+    const targetableEnemies = g.enemies.filter((e: any) => !e.isOutOfScreen);
+    if (targetableEnemies.length === 0) return;
 
     // Find closest enemies
-    const targets = [...g.enemies]
+    const targets = [...targetableEnemies]
       .map((e) => {
         const dx = e.x - g.player.x;
         const dy = e.y - g.player.y;
@@ -1041,7 +1288,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         dy: Math.sin(angle + angleOffset),
         speed: wpnData.isEvo ? 12 : 7 + wpnData.level,
         size: wpnData.isEvo ? 16 : 8 + wpnData.level * 1.5,
-        damage: (10 + wpnData.level * 4) * g.player.atkMultiplier * (wpnData.isEvo ? 1.8 : 1),
+        damage: (20 + wpnData.level * 10) * g.player.atkMultiplier * (wpnData.isEvo ? 2.5 : 1),
         piercing: wpnData.isEvo ? 999 : Math.floor(wpnData.level / 2), // EVO pierces everything!
         color: wpnData.isEvo ? "#f59e0b" : "#38bdf8",
         life: 3000,
@@ -1068,7 +1315,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         dy: Math.sin(angle),
         speed: wpnData.isEvo ? 9 : 5 + wpnData.level * 0.6,
         size: wpnData.isEvo ? 20 : 12 + wpnData.level * 2,
-        damage: (20 + wpnData.level * 8) * g.player.atkMultiplier * (wpnData.isEvo ? 1.5 : 1),
+        damage: (35 + wpnData.level * 15) * g.player.atkMultiplier * (wpnData.isEvo ? 2.2 : 1),
         bounces: wpnData.isEvo ? 12 : 3 + wpnData.level,
         color: wpnData.isEvo ? "#a855f7" : "#f97316", // Purple for Evo quantum, Orange for normal
         life: 5000,
@@ -1098,7 +1345,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         timer: 0,
         duration: wpnData.isEvo ? 6000 : 3000 + wpnData.level * 500,
         radius: wpnData.isEvo ? 75 : 40 + wpnData.level * 8,
-        damage: (4 + wpnData.level * 2) * g.player.atkMultiplier * (wpnData.isEvo ? 1.6 : 1),
+        damage: (10 + wpnData.level * 4) * g.player.atkMultiplier * (wpnData.isEvo ? 2.0 : 1),
         color: wpnData.isEvo ? "rgba(56, 189, 248, 0.3)" : "rgba(249, 115, 22, 0.3)", // Blue fire for Evo, Orange for normal
         tickTimer: 0,
       });
@@ -1111,32 +1358,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const fireLightning = (wpnData: any) => {
     const g = gameState.current;
-    if (g.enemies.length === 0) return;
+    const targetableEnemies = g.enemies.filter((e: any) => !e.isOutOfScreen);
+    if (targetableEnemies.length === 0) return;
 
     // Pick random enemies to strike
     const count = wpnData.isEvo ? 6 : 1 + wpnData.level;
     for (let i = 0; i < count; i++) {
-      const idx = Math.floor(Math.random() * g.enemies.length);
-      const enemy = g.enemies[idx];
+      if (targetableEnemies.length === 0) break;
+      const idx = Math.floor(Math.random() * targetableEnemies.length);
+      const enemy = targetableEnemies[idx];
 
       g.projectiles.push({
         type: "LIGHTNING",
         x: enemy.x,
         y: enemy.y,
         size: wpnData.isEvo ? 55 : 30 + wpnData.level * 4,
-        damage: (35 + wpnData.level * 12) * g.player.atkMultiplier,
+        damage: (75 + wpnData.level * 25) * g.player.atkMultiplier * (wpnData.isEvo ? 2.0 : 1),
         timer: 200, // Duration to show strike on screen
         isEvo: wpnData.isEvo,
       });
 
       // Apply instant damage
-      const baseDmg = (35 + wpnData.level * 12) * g.player.atkMultiplier;
+      const baseDmg = (75 + wpnData.level * 25) * g.player.atkMultiplier * (wpnData.isEvo ? 2.0 : 1);
       applyDamageToEnemy(enemy, baseDmg);
 
       // Chain lightning for EVO
       if (wpnData.isEvo) {
         // Strike another 2 nearest targets
-        const chains = [...g.enemies]
+        const chains = [...targetableEnemies]
           .filter((e) => e !== enemy)
           .map((e) => {
             const dx = e.x - enemy.x;
@@ -1172,12 +1421,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     let angle = 0;
     const playerSpeed = Math.hypot(g.player.vx || 0, g.player.vy || 0);
 
+    const targetableEnemies = g.enemies.filter((e: any) => !e.isOutOfScreen);
+
     if (playerSpeed > 0.1) {
       angle = Math.atan2(g.player.vy, g.player.vx);
-    } else if (g.enemies.length > 0) {
-      let closestEnemy = g.enemies[0];
+    } else if (targetableEnemies.length > 0) {
+      let closestEnemy = targetableEnemies[0];
       let minDist = Infinity;
-      g.enemies.forEach((e: any) => {
+      targetableEnemies.forEach((e: any) => {
         const d = Math.hypot(e.x - g.player.x, e.y - g.player.y);
         if (d < minDist) {
           minDist = d;
@@ -1206,7 +1457,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         dy: Math.sin(finalAngle),
         speed: wpnData.isEvo ? 14 : 9 + wpnData.level,
         size: wpnData.isEvo ? 12 : 5 + wpnData.level * 0.8,
-        damage: (8 + wpnData.level * 3) * g.player.atkMultiplier * (wpnData.isEvo ? 2.4 : 1) * 0.7,
+        damage: (5 + wpnData.level * 1.5) * g.player.atkMultiplier * (wpnData.isEvo ? 1.6 : 1) * 0.5,
         piercing: wpnData.isEvo ? 999 : 1 + Math.floor(wpnData.level / 2),
         color: wpnData.isEvo ? "#fbbf24" : "#facc15",
         life: 1500,
@@ -1248,11 +1499,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     // Level-based damage
-    let damage = 10;
-    if (wpnData.level === 2) damage = 20;
-    else if (wpnData.level === 3) damage = 30;
-    else if (wpnData.level === 4) damage = 40;
-    else if (wpnData.level >= 5) damage = 50;
+    let damage = 5;
+    if (wpnData.level === 2) damage = 8;
+    else if (wpnData.level === 3) damage = 12;
+    else if (wpnData.level === 4) damage = 16;
+    else if (wpnData.level >= 5) damage = 22;
 
     // Radius
     const radius = wpnData.isEvo ? 32 : 16 + wpnData.level * 2;
@@ -1276,9 +1527,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       x: dropX,
       y: dropY,
       timer: 0,
-      duration: 4500, // persists on ground for 4.5 seconds
+      duration: 2500, // persists on ground for 2.5 seconds (reduced from 4.5 to avoid over-stacking)
       radius: radius,
-      damage: isRainbowMode ? 100 : damage,
+      damage: isRainbowMode ? 40 : damage,
       isRainbow: isRainbowMode,
       tickTimer: 0,
     });
@@ -1297,9 +1548,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           x: g.player.x + off.dx,
           y: g.player.y + off.dy,
           timer: 0,
-          duration: 4500,
+          duration: 2500, // persists on ground for 2.5 seconds
           radius: radius,
-          damage: isRainbowMode ? 100 : damage,
+          damage: isRainbowMode ? 40 : damage,
           isRainbow: isRainbowMode,
           tickTimer: 0,
         });
@@ -1312,7 +1563,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   };
 
-  const applyDamageToEnemy = (enemy: any, amount: number) => {
+  const applyDamageToEnemy = (enemy: any, amount: number, knockbackAmount: number = 5) => {
+    if (enemy.isOutOfScreen) return; // Cannot damage out-of-screen/jumping enemies
+    // Check for custom invulnerability (e.g. Anger-Issue Gorilla pattern 3)
+    if (enemy.isInvulnerable) {
+      if (Math.random() < 0.25) { // Prevents too much text spam
+        gameState.current.damageTexts.push({
+          x: enemy.x + (Math.random() - 0.5) * 12,
+          y: enemy.y - 12,
+          text: "무적!",
+          color: "#fbbf24", // gold glowing text
+          size: 14,
+          life: 0.8,
+        });
+      }
+      return;
+    }
+
     const isCrit = Math.random() < 0.15;
     const finalAmount = isCrit ? Math.floor(amount * 1.5) : Math.floor(amount);
 
@@ -1328,11 +1595,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       life: 0.8,
     });
 
-    // Knockback
+    // Knockback (Prevent knockback for BOSS and FINAL_BOSS)
     const angle = Math.atan2(enemy.y - gameState.current.player.y, enemy.x - gameState.current.player.x);
-    if (enemy.type !== "BOSS") {
-      enemy.x += Math.cos(angle) * 5;
-      enemy.y += Math.sin(angle) * 5;
+    if (enemy.type !== "BOSS" && enemy.type !== "FINAL_BOSS") {
+      enemy.x += Math.cos(angle) * knockbackAmount;
+      enemy.y += Math.sin(angle) * knockbackAmount;
     }
 
     // Spark particles
@@ -1353,6 +1620,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Check monster collision
         for (let i = 0; i < g.enemies.length; i++) {
           const e = g.enemies[i];
+          if (e.isOutOfScreen) continue;
           const dist = Math.hypot(e.x - p.x, e.y - p.y);
           if (dist < e.radius + p.size / 2) {
             applyDamageToEnemy(e, p.damage);
@@ -1390,6 +1658,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Check monster collision
         for (let i = 0; i < g.enemies.length; i++) {
           const e = g.enemies[i];
+          if (e.isOutOfScreen) continue;
           const dist = Math.hypot(e.x - p.x, e.y - p.y);
           if (dist < e.radius + p.size / 2) {
             applyDamageToEnemy(e, p.damage);
@@ -1423,6 +1692,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Check enemy collision
         for (let i = 0; i < g.enemies.length; i++) {
           const e = g.enemies[i];
+          if (e.isOutOfScreen) continue;
           const dist = Math.hypot(e.x - p.x, e.y - p.y);
           if (dist < e.radius + p.size / 2) {
             applyDamageToEnemy(e, p.damage);
@@ -1450,11 +1720,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Pulse collision check with enemies
         for (let i = 0; i < g.enemies.length; i++) {
           const e = g.enemies[i];
+          if (e.isOutOfScreen) continue;
           const dist = Math.hypot(e.x - p.x, e.y - p.y);
           if (dist < e.radius + p.size / 2) {
             // Push enemies outward strongly
             const pushAngle = Math.atan2(e.y - g.player.y, e.x - g.player.x);
-            if (e.type !== "BOSS") {
+            if (e.type !== "BOSS" && e.type !== "FINAL_BOSS") {
               e.x += Math.cos(pushAngle) * 15;
               e.y += Math.sin(pushAngle) * 15;
             }
@@ -1475,6 +1746,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           p.tickTimer = 0;
           for (let i = 0; i < g.enemies.length; i++) {
             const e = g.enemies[i];
+            if (e.isOutOfScreen) continue;
             const dist = Math.hypot(e.x - p.x, e.y - p.y);
             if (dist < p.radius) {
               applyDamageToEnemy(e, p.damage);
@@ -1494,9 +1766,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           p.tickTimer = 0;
           for (let i = 0; i < g.enemies.length; i++) {
             const e = g.enemies[i];
+            if (e.isOutOfScreen) continue;
             const dist = Math.hypot(e.x - p.x, e.y - p.y);
             if (dist < p.radius + e.radius) {
-              applyDamageToEnemy(e, p.damage);
+              applyDamageToEnemy(e, p.damage, 0); // Disable knockback for poop
             }
           }
         }
@@ -1528,18 +1801,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Drop XP Gem
         spawnGem(e.x, e.y, e.type);
 
-        if (!g.finalBossActive) {
-          if (g.player.kills >= 2000 && !g.spawnedDashBoss) {
-            g.spawnedDashBoss = true;
-            spawnMiniBoss("DASH", true);
-          } else if (g.player.kills >= 5000 && !g.spawnedBurstBoss) {
-            g.spawnedBurstBoss = true;
-            spawnMiniBoss("BURST", true);
-          } else if (g.player.kills >= 7500 && !g.spawnedSlamBoss) {
-            g.spawnedSlamBoss = true;
-            spawnMiniBoss("SLAM", true);
-          }
-        }
+        // Mini bosses spawning on kills removed as requested
 
         if (e.type === "BOSS") {
           g.bossDefeated = true;
@@ -1573,29 +1835,47 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
 
         if (e.type === "FINAL_BOSS") {
-          g.finalBossActive = false;
-          g.finalBossDefeated = true;
-          setBossHealth(null);
-          g.particles.push(...createExplosion(e.x, e.y, "#fbbf24", 80));
-          
-          // Defeat reward: 2000 Gold!
-          const ringLevel = g.equipmentReinforcements?.ring || 0;
-          const goldMultiplier = 1.0 + ringLevel * 0.15;
-          const goldReward = Math.floor(2000 * goldMultiplier);
-          g.player.gold += goldReward;
+          if (!g.cinematic) {
+            g.cinematic = {
+              type: "victory",
+              timer: 3000,
+              maxTimer: 3000,
+              bossId: e,
+            };
+            e.hp = 0; // Freeze HP at 0
+            e.isInvulnerable = true; // No more damage
+            setBossHealth(null); // Hide health bar
+            g.projectiles = []; // 승리 시 플레이어 공격 투사체 전체 삭제
+            g.damageTexts = [];
+            return true; // Keep alive in list during cinematic
+          } else {
+            // Cinematic is running or ended
+            if (g.cinematic.timer <= 0) {
+              g.finalBossActive = false;
+              g.finalBossDefeated = true;
+              g.particles.push(...createExplosion(e.x, e.y, "#fbbf24", 100));
+              
+              // Defeat reward: 2000 Gold!
+              const ringLevel = g.equipmentReinforcements?.ring || 0;
+              const goldMultiplier = 1.0 + ringLevel * 0.15;
+              const goldReward = Math.floor(2000 * goldMultiplier);
+              g.player.gold += goldReward;
 
-          g.damageTexts.push({
-            x: e.x,
-            y: e.y - 15,
-            text: `최종 보스 제압! +${goldReward.toLocaleString()}G`,
-            color: "#fbbf24",
-            size: 20,
-            life: 2.5,
-          });
+              g.damageTexts.push({
+                x: e.x,
+                y: e.y - 15,
+                text: `최종 보스 제압! +${goldReward.toLocaleString()}G`,
+                color: "#fbbf24",
+                size: 20,
+                life: 2.5,
+              });
 
-          soundEngine.playLevelUp();
-          endGame(true); // Victory!
-          return false;
+              soundEngine.playLevelUp();
+              endGame(true); // Victory!
+              return false; // Actually remove from list
+            }
+            return true; // Keep in list
+          }
         }
 
         // Spark explosion
@@ -1686,11 +1966,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               e.state = "SLAM_RELEASE";
               e.patternTimer = 0;
               if (dist < 130) {
-                g.player.hp -= e.damage * 1.5;
+                damagePlayer(e.damage * 1.5);
                 g.screenShake = 8;
-                if (g.player.hp <= 0) {
-                  endGame(false);
-                }
               }
               // Spawn cool visual particles in an expanding ring
               for (let i = 0; i < 24; i++) {
@@ -1796,11 +2073,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               e.state = "NORMAL";
               e.shootTimer = 0;
               if (dist < 180) {
-                g.player.hp -= e.damage * 1.8;
+                damagePlayer(e.damage * 1.8);
                 g.screenShake = 12;
-                if (g.player.hp <= 0) {
-                  endGame(false);
-                }
               }
               for (let i = 0; i < 36; i++) {
                 const angle = (i * Math.PI * 2) / 36;
@@ -1837,6 +2111,454 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             life: 3000,
           });
         }
+      } else if (e.type === "BOSS") {
+        if (e.name && e.name.includes("돌격대장 원숭이")) {
+          // Initialize states if not present
+          if (e.state === undefined) e.state = "NORMAL";
+          if (e.patternTimer === undefined) e.patternTimer = 0;
+          if (e.halfHpTriggered === undefined) e.halfHpTriggered = false;
+
+          // Check HP threshold for Pattern 2 (Half HP explosion)
+          if (e.hp <= e.maxHp * 0.5 && !e.halfHpTriggered) {
+            e.halfHpTriggered = true;
+            e.state = "HALF_HP_PREPARING";
+            e.halfHpTimer = 2000; // 2 seconds
+            g.screenShake = 5;
+            soundEngine.playBossAlert();
+          }
+
+          if (e.state === "HALF_HP_PREPARING") {
+            // Keep completely still and count down
+            e.halfHpTimer -= delta;
+            
+            // Store warning zone drawing data
+            e.drawWarningArea = {
+              radius: 280,
+              type: "HALF_HP_PREPARING",
+              timer: e.halfHpTimer,
+            };
+
+            if (e.halfHpTimer <= 0) {
+              e.state = "NORMAL";
+              e.patternTimer = 0;
+              e.drawWarningArea = null;
+
+              // 1. Deal massive damage to Player if within 280px
+              if (dist < 280) {
+                damagePlayer(45);
+                g.screenShake = 15;
+              }
+
+              // 2. Clear all normal enemies in the 280px radius
+              g.enemies.forEach((other: any) => {
+                if (other !== e && other.type !== "BOSS" && other.type !== "FINAL_BOSS") {
+                  const oDx = other.x - e.x;
+                  const oDy = other.y - e.y;
+                  const oDist = Math.hypot(oDx, oDy);
+                  if (oDist < 280) {
+                    other.hp = 0; // Destroy them!
+                  }
+                }
+              });
+
+              // 3. Spawn gorgeous explosion particles
+              for (let i = 0; i < 48; i++) {
+                const angle = (i * Math.PI * 2) / 48;
+                const pSpeed = 2 + Math.random() * 5;
+                g.particles.push({
+                  x: e.x,
+                  y: e.y,
+                  dx: Math.cos(angle) * pSpeed,
+                  dy: Math.sin(angle) * pSpeed,
+                  size: 4 + Math.random() * 6,
+                  color: "#ef4444", // Red fiery particles
+                  life: 0.8 + Math.random() * 0.4,
+                  decay: 0.02,
+                });
+              }
+            }
+          } else if (e.state === "NORMAL") {
+            e.patternTimer += delta;
+            if (e.patternTimer >= 2500) {
+              e.state = "AIMING";
+              e.aimTimer = 1000; // 1 second aiming
+            }
+
+            // Normal chase movement
+            const angle = Math.atan2(dy, dx);
+            e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+            e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+            e.drawWarningArea = null;
+          } else if (e.state === "AIMING") {
+            e.aimTimer -= delta;
+            
+            // Lock aiming line on the player
+            e.drawWarningArea = {
+              type: "AIMING",
+              timer: e.aimTimer,
+              aimX: g.player.x,
+              aimY: g.player.y,
+            };
+
+            // Monkey stands still while aiming
+            if (e.aimTimer <= 0) {
+              e.state = "DASHING";
+              e.dashTimer = 700; // 0.7 second dashing
+              e.drawWarningArea = null;
+              
+              // Calculate dash direction vector
+              const angle = Math.atan2(dy, dx);
+              e.dashDx = Math.cos(angle);
+              e.dashDy = Math.sin(angle);
+              e.hasDealtDashDamage = false; // reset damage flag for this dash
+            }
+          } else if (e.state === "DASHING") {
+            e.dashTimer -= delta;
+
+            // Dash movement: high speed
+            e.x += e.dashDx * e.speed * 4.5 * (delta / 16.6);
+            e.y += e.dashDy * e.speed * 4.5 * (delta / 16.6);
+
+            // Spawn dynamic dash ghost particles
+            if (Math.random() < 0.4) {
+              g.particles.push({
+                x: e.x,
+                y: e.y,
+                dx: (Math.random() - 0.5) * 1,
+                dy: (Math.random() - 0.5) * 1,
+                size: e.radius * 0.8,
+                color: "rgba(239, 68, 68, 0.3)",
+                life: 0.3,
+                decay: 0.05,
+              });
+            }
+
+            // Deal custom damage if colliding with player during dash
+            if (!e.hasDealtDashDamage && dist < g.player.radius + e.radius) {
+              e.hasDealtDashDamage = true;
+              damagePlayer(30);
+              g.screenShake = 10;
+            }
+
+            if (e.dashTimer <= 0) {
+              e.state = "NORMAL";
+              e.patternTimer = 0;
+            }
+          }
+        } else if (e.name && e.name.includes("분조장 고릴라")) {
+          // Initialize states if not present
+          if (e.state === undefined) e.state = "NORMAL";
+          if (e.patternTimer === undefined) e.patternTimer = 0;
+          if (e.lastEnrageHpTrigger === undefined) e.lastEnrageHpTrigger = e.maxHp;
+          if (e.isInvulnerable === undefined) e.isInvulnerable = false;
+          if (e.enrageTimer === undefined) e.enrageTimer = 0;
+
+          // Check HP threshold for Pattern 3 (20% HP damage Invulnerability & Instant Pattern Trigger)
+          if (e.hp <= e.lastEnrageHpTrigger - e.maxHp * 0.2) {
+            const steps = Math.floor((e.lastEnrageHpTrigger - e.hp) / (e.maxHp * 0.2));
+            if (steps > 0) {
+              e.lastEnrageHpTrigger -= steps * (e.maxHp * 0.2);
+              e.isInvulnerable = true;
+              e.enrageTimer = 5000; // 5 seconds invulnerable
+              g.screenShake = 15;
+              soundEngine.playBossAlert();
+              g.damageTexts.push({
+                x: e.x,
+                y: e.y - 30,
+                text: "⚡ 분조장 고릴라 폭주 (5초 무적!) ⚡",
+                color: "#f43f5e",
+                size: 16,
+                life: 2.5,
+              });
+
+              // 만약 패턴1이나 패턴2를 사용하고 있지 않으면(즉 NORMAL 상태이면), 즉시 둘 중 하나 실행
+              if (e.state === "NORMAL") {
+                const isJump = Math.random() < 0.5;
+                if (isJump) {
+                  e.state = "GORILLA_JUMP_PREP";
+                  e.jumpCount = 0;
+                  e.jumpPrepTimer = 2000; // 2초간 멈춤
+                } else {
+                  e.state = "GORILLA_AIMING";
+                  e.aimTimer = 1000; // 1초 조준
+                  e.throwCount = 0;
+                }
+                e.drawWarningArea = null;
+                e.patternTimer = 0;
+              }
+            }
+          }
+
+          // Count down enrage invulnerability timer
+          if (e.isInvulnerable) {
+            e.enrageTimer -= delta;
+            if (e.enrageTimer <= 0) {
+              e.isInvulnerable = false;
+            }
+          }
+
+          // Active speed for Gorilla Boss (moves faster if enraged/invulnerable)
+          const currentSpeed = e.isInvulnerable ? e.speed * 1.6 : e.speed;
+
+          if (e.state === "NORMAL") {
+            // Normal chase state, timer progresses faster if enraged (2.5x speed)
+            e.patternTimer += delta * (e.isInvulnerable ? 2.5 : 1.0);
+            if (e.patternTimer >= 2200) {
+              // Choose random pattern
+              const isJump = Math.random() < 0.5;
+              if (isJump) {
+                e.state = "GORILLA_JUMP_PREP";
+                e.jumpCount = 0;
+                e.jumpPrepTimer = 2000; // 2초 멈춤
+              } else {
+                e.state = "GORILLA_AIMING";
+                e.aimTimer = 1000; // 1초 조준
+                e.throwCount = 0;
+              }
+              e.drawWarningArea = null;
+            }
+
+            // Move toward player
+            const angle = Math.atan2(dy, dx);
+            e.x += Math.cos(angle) * currentSpeed * (delta / 16.6);
+            e.y += Math.sin(angle) * currentSpeed * (delta / 16.6);
+            e.drawWarningArea = null;
+
+          } else if (e.state === "GORILLA_JUMP_PREP") {
+            // 보스가 동안 멈추고 제자리에 대기
+            e.jumpPrepTimer -= delta;
+            e.isOutOfScreen = false; // 아직 하늘로 뛰지 않음
+            e.drawWarningArea = null; // 대기 중에는 경고영역 없음
+
+            if (e.jumpPrepTimer <= 0) {
+              // 보스가 하늘로 뛰어올라 (잠시 사라짐)
+              e.state = "GORILLA_JUMP_AIR";
+              e.jumpAirTimer = 1000; // 1초 체공
+              e.isOutOfScreen = true; // 하늘로 날아 사라짐
+
+              // 하얀 연기 점프 이펙트 (White smoke jump effect)
+              for (let i = 0; i < 40; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const pSpeed = 1 + Math.random() * 4;
+                g.particles.push({
+                  x: e.x,
+                  y: e.y,
+                  dx: Math.cos(angle) * pSpeed,
+                  dy: Math.sin(angle) * pSpeed,
+                  size: 10 + Math.random() * 15, // 큰 연기 입자 크기
+                  color: Math.random() < 0.5 ? "rgba(255, 255, 255, 0.75)" : "rgba(220, 225, 230, 0.65)",
+                  life: 0.8 + Math.random() * 0.4,
+                  decay: 0.02 + Math.random() * 0.02,
+                });
+              }
+
+              // 플레이어 현재 위치에 보스 크기 만큼의 빨간 구역을 표시
+              e.jumpTargetX = g.player.x;
+              e.jumpTargetY = g.player.y;
+              e.drawWarningArea = {
+                type: "GORILLA_JUMP",
+                targetX: e.jumpTargetX,
+                targetY: e.jumpTargetY,
+                radius: e.radius, // 보스 크기 만큼의 빨간 구역
+                timer: 1000, // 1초 경고
+              };
+            }
+
+          } else if (e.state === "GORILLA_JUMP_AIR") {
+            // 하늘에 떠 있는 동안 (잠시 사라진 상태) 1초 타이머 카운트
+            e.jumpAirTimer -= delta;
+            e.isOutOfScreen = true; // 하늘에 떠 있어 렌더링에서 제외됨
+
+            // 빨간 경고 영역 실시간 타이머 유지
+            if (e.drawWarningArea) {
+              e.drawWarningArea.timer = e.jumpAirTimer;
+            }
+
+            if (e.jumpAirTimer <= 0) {
+              // 1초 뒤에 해당 표시를 향해 떨어지며 착지!
+              e.x = e.jumpTargetX;
+              e.y = e.jumpTargetY;
+              e.isOutOfScreen = false; // 다시 나타남
+              g.screenShake = 15; // 낙하 충격 화면 흔들림
+              soundEngine.playBomb();
+
+              // 해당 범위 공격해서 플레이어에게 큰 피해를 입힘
+              const playerDist = Math.hypot(g.player.x - e.x, g.player.y - e.y);
+              if (playerDist < e.radius + g.player.radius) {
+                damagePlayer(55);
+              }
+
+              // 낙하 충격파 먼지 파티클 연출
+              for (let i = 0; i < 35; i++) {
+                const angle = (i * Math.PI * 2) / 35;
+                const pSpeed = 3 + Math.random() * 5;
+                g.particles.push({
+                  x: e.x,
+                  y: e.y,
+                  dx: Math.cos(angle) * pSpeed,
+                  dy: Math.sin(angle) * pSpeed,
+                  size: 3 + Math.random() * 6,
+                  color: "#ef4444",
+                  life: 0.7,
+                  decay: 0.025,
+                });
+              }
+
+              e.drawWarningArea = null;
+              e.jumpCount += 1;
+
+              // 총 3번 시행
+              if (e.jumpCount < 3) {
+                e.state = "GORILLA_JUMP_PREP";
+                e.jumpPrepTimer = 500; // 이후 2번은 낙하 후 0.5초 뒤 바로 높이 도약하고 1초후 공격
+              } else {
+                e.state = "NORMAL";
+                e.patternTimer = 0;
+              }
+            }
+
+          } else if (e.state === "GORILLA_AIMING") {
+            // 플레이어 위치를 1초간 조준 (빨간 선으로 표시)
+            e.aimTimer -= delta;
+            e.drawWarningArea = {
+              type: "GORILLA_AIMING",
+              aimX: g.player.x,
+              aimY: g.player.y,
+              timer: e.aimTimer,
+            };
+
+            if (e.aimTimer <= 0) {
+              e.state = "GORILLA_THROWING";
+              e.throwCount = 0;
+              e.throwIntervalTimer = 0;
+              
+              // 조준 완료된 방향 벡터 고정
+              const angle = Math.atan2(dy, dx);
+              e.throwDx = Math.cos(angle);
+              e.throwDy = Math.sin(angle);
+              e.drawWarningArea = null;
+            }
+
+          } else if (e.state === "GORILLA_THROWING") {
+            // 해당 방향으로 큰 바위를 빠르게 3번 던짐
+            e.throwIntervalTimer -= delta;
+            if (e.throwIntervalTimer <= 0) {
+              // 크고 빠른 바위 투사체 생성
+              g.projectiles.push({
+                type: "ACID_BALL",
+                isRock: true,
+                x: e.x,
+                y: e.y,
+                dx: e.throwDx,
+                dy: e.throwDy,
+                speed: 11.0, // 고속 발사 (기존 6.5 -> 11.0)
+                size: 30, // 큰 크기 (기존 16 -> 30)
+                damage: e.damage * 1.5, // 강력한 데미지
+                color: "#78350f", // 바위 갈색
+                life: 2500,
+              });
+
+              if (soundEnabledRef.current) {
+                soundEngine.playShoot();
+              }
+
+              e.throwCount += 1;
+              e.throwIntervalTimer = 200; // 빠른 연사 간격 0.2초
+
+              if (e.throwCount >= 3) {
+                e.state = "NORMAL";
+                e.patternTimer = 0;
+              }
+            }
+          }
+        } else {
+          // Other Bosses (General or 4, 6, 8 min Bosses)
+          e.shootTimer = (e.shootTimer || 0) + delta;
+          const maxShootInterval = e.name && e.name.includes("정예") ? 1800 : 3000;
+          
+          if (e.shootTimer >= maxShootInterval) {
+            e.shootTimer = 0;
+            
+            // Elite bosses shoot custom projectiles
+            if (e.name && e.name.includes("정예 레이저 수호자")) {
+              // 3 radial spreads
+              for (let j = 0; j < 3; j++) {
+                const baseAngle = Math.atan2(dy, dx) + (j - 1) * 0.25;
+                g.projectiles.push({
+                  type: "ACID_BALL",
+                  x: e.x,
+                  y: e.y,
+                  dx: Math.cos(baseAngle),
+                  dy: Math.sin(baseAngle),
+                  speed: 4.2,
+                  size: 11,
+                  damage: e.damage * 0.9,
+                  color: e.color,
+                  life: 3500,
+                });
+              }
+            } else if (e.name && e.name.includes("정예 메탈 기어 골렘")) {
+              // 8-directional projectile burst
+              for (let i = 0; i < 8; i++) {
+                const angle = (i * Math.PI * 2) / 8;
+                g.projectiles.push({
+                  type: "ACID_BALL",
+                  x: e.x,
+                  y: e.y,
+                  dx: Math.cos(angle),
+                  dy: Math.sin(angle),
+                  speed: 3.5,
+                  size: 12,
+                  damage: e.damage * 0.8,
+                  color: e.color,
+                  life: 4000,
+                });
+              }
+            } else if (e.name && e.name.includes("정예 차원 침략자")) {
+              // Targeted fast projectile cascade
+              for (let j = 0; j < 5; j++) {
+                setTimeout(() => {
+                  if (e.hp <= 0 || !g.enemies.includes(e)) return;
+                  const currentDx = g.player.x - e.x;
+                  const currentDy = g.player.y - e.y;
+                  const angle = Math.atan2(currentDy, currentDx);
+                  g.projectiles.push({
+                    type: "ACID_BALL",
+                    x: e.x,
+                    y: e.y,
+                    dx: Math.cos(angle),
+                    dy: Math.sin(angle),
+                    speed: 5.5,
+                    size: 10,
+                    damage: e.damage * 0.7,
+                    color: e.color,
+                    life: 3000,
+                  });
+                }, j * 120);
+              }
+            } else {
+              // Normal boss shoot single standard projectile
+              const angle = Math.atan2(dy, dx);
+              g.projectiles.push({
+                type: "ACID_BALL",
+                x: e.x,
+                y: e.y,
+                dx: Math.cos(angle),
+                dy: Math.sin(angle),
+                speed: 3.0,
+                size: 10,
+                damage: e.damage * 0.7,
+                color: e.color,
+                life: 3000,
+              });
+            }
+          }
+
+          // Move toward player
+          const angle = Math.atan2(dy, dx);
+          e.x += Math.cos(angle) * e.speed * (delta / 16.6);
+          e.y += Math.sin(angle) * e.speed * (delta / 16.6);
+        }
       } else {
         // Move forward
         const angle = Math.atan2(dy, dx);
@@ -1846,7 +2568,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Deal damage to Player on collision
       if (dist < g.player.radius + e.radius) {
-        g.player.hp -= e.damage * (delta / 1000); // Damage over time
+        damagePlayer(e.damage * (delta / 1000));
         g.screenShake = 3;
 
         // Bleed particles
@@ -1861,10 +2583,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             life: 0.5,
             decay: 0.05,
           });
-        }
-
-        if (g.player.hp <= 0) {
-          endGame(false);
         }
       }
 
@@ -1886,7 +2604,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       setBossHealth({
         current: Math.max(0, normalBoss.hp),
         max: normalBoss.maxHp,
-        name: "무법 파괴대왕 메카 보스",
+        name: normalBoss.name || "무법 파괴대왕 메카 보스",
       });
     } else if (miniBoss) {
       setBossHealth({
@@ -1907,11 +2625,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         const dist = Math.hypot(g.player.x - p.x, g.player.y - p.y);
         if (dist < g.player.radius + p.size / 2) {
-          g.player.hp -= p.damage;
+          damagePlayer(p.damage);
           g.screenShake = 4;
-          if (g.player.hp <= 0) {
-            endGame(false);
-          }
           return false;
         }
 
@@ -2101,7 +2816,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
   };
 
-  const spawnBoss = () => {
+  const spawnBoss = (minutesOverride?: number) => {
     const g = gameState.current;
     g.bossSpawned = true;
 
@@ -2114,9 +2829,89 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const bx = g.player.x + Math.cos(spawnAngle) * spawnDist;
     const by = g.player.y + Math.sin(spawnAngle) * spawnDist;
 
-    const scaleFactor = Math.floor(g.player.timeElapsed / 60); // 1, 2, 3, etc.
-    const bossHp = 1200 + Math.max(0, scaleFactor - 1) * 800;
-    const bossDamage = 40 + Math.max(0, scaleFactor - 1) * 15;
+    const elapsed = g.player.timeElapsed;
+    const minutes = minutesOverride !== undefined ? minutesOverride : (Math.round(elapsed / 60) || 1);
+    
+    let bossHp = 1500;
+    let bossDamage = 40;
+    let bossSpeed = 1.4;
+    let bossRadius = 54;
+    let bossColor = "#eab308";
+    let bossName = "무법 파괴대왕 메카 보스";
+
+    // Precise health mapping per user specifications (1 to 9 minutes)
+    if (minutes === 1) {
+      bossHp = 1500;
+      bossDamage = 40;
+      bossSpeed = 1.3;
+      bossRadius = 54;
+      bossColor = "#eab308";
+      bossName = "🤖 무법 파괴대왕 메카 보스 (1분)";
+    } else if (minutes === 2) {
+      bossHp = 10000;
+      bossDamage = 45;
+      bossSpeed = 1.8;
+      bossRadius = 60;
+      bossColor = "#ef4444";
+      bossName = "🐒 [2분 정예보스] 돌격대장 원숭이";
+    } else if (minutes === 3) {
+      bossHp = 15000;
+      bossDamage = 50;
+      bossSpeed = 1.35;
+      bossRadius = 54;
+      bossColor = "#f59e0b";
+      bossName = "🤖 무법 파괴대왕 메카 보스 (3분)";
+    } else if (minutes === 4) {
+      bossHp = 30000;
+      bossDamage = 55;
+      bossSpeed = 1.5;
+      bossRadius = 65;
+      bossColor = "#ec4899"; // Distinct hot pink/magenta for anger-issue gorilla
+      bossName = "🦍 [4분 정예보스] 분조장 고릴라";
+    } else if (minutes === 5) {
+      bossHp = 40000;
+      bossDamage = 60;
+      bossSpeed = 1.4;
+      bossRadius = 54;
+      bossColor = "#d97706";
+      bossName = "🤖 무법 파괴대왕 메카 보스 (5분)";
+    } else if (minutes === 6) {
+      bossHp = 65000;
+      bossDamage = 65;
+      bossSpeed = 1.3;
+      bossRadius = 60;
+      bossColor = "#06b6d4";
+      bossName = "🤖 [6분 정예보스] 정예 메탈 기어 골렘";
+    } else if (minutes === 7) {
+      bossHp = 70000;
+      bossDamage = 70;
+      bossSpeed = 1.45;
+      bossRadius = 54;
+      bossColor = "#b45309";
+      bossName = "🤖 무법 파괴대왕 메카 보스 (7분)";
+    } else if (minutes === 8) {
+      bossHp = 100000;
+      bossDamage = 80;
+      bossSpeed = 1.6;
+      bossRadius = 65;
+      bossColor = "#ec4899";
+      bossName = "🌌 [8분 정예보스] 정예 차원 침략자";
+    } else if (minutes === 9) {
+      bossHp = 120000;
+      bossDamage = 90;
+      bossSpeed = 1.5;
+      bossRadius = 54;
+      bossColor = "#78350f";
+      bossName = "🤖 무법 파괴대왕 메카 보스 (9분)";
+    } else {
+      const scaleFactor = Math.max(1, minutes);
+      bossHp = 120000 + (scaleFactor - 9) * 30000;
+      bossDamage = 90 + (scaleFactor - 9) * 10;
+      bossSpeed = 1.4;
+      bossRadius = 54;
+      bossColor = "#eab308";
+      bossName = `🤖 무법 파괴대왕 메카 보스 (${scaleFactor}분)`;
+    }
 
     g.enemies.push({
       type: "BOSS",
@@ -2125,10 +2920,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       hp: bossHp,
       maxHp: bossHp,
       damage: bossDamage,
-      speed: 1.4,
-      radius: 54,
-      color: "#eab308", // Golden Yellow
+      speed: bossSpeed,
+      radius: bossRadius,
+      color: bossColor,
+      name: bossName,
       shootTimer: 0,
+      state: "NORMAL",
+      patternTimer: 0,
+      halfHpTriggered: false,
     });
   };
 
@@ -2259,6 +3058,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const spawnFinalBoss = () => {
     const g = gameState.current;
+    // Filter out existing FINAL_BOSS instances
+    g.enemies = g.enemies.filter((e: any) => e.type !== "FINAL_BOSS");
+    
     g.finalBossSpawned = true;
     g.finalBossActive = true;
     g.finalBossTimer = 180; // 3 minutes = 180 seconds
@@ -2275,8 +3077,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       type: "FINAL_BOSS",
       x: bx,
       y: by,
-      hp: 50000,
-      maxHp: 50000,
+      hp: 500000,
+      maxHp: 500000,
       damage: 75,
       speed: 1.1,
       radius: 80,
@@ -2338,6 +3140,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // End Game (Victory or Defeat)
   const endGame = (victory: boolean) => {
     const g = gameState.current;
+    if (!victory && isGodModeState) {
+      g.player.hp = g.player.maxHp;
+      return;
+    }
     if (g.isEnded) return;
     g.isEnded = true;
 
@@ -2374,6 +3180,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // 1. Clear background
     ctx.fillStyle = "#0f172a"; // deep slate background
     ctx.fillRect(0, 0, g.dimensions.width, g.dimensions.height);
+
+    // Apply Camera Zoom centered on the screen
+    if (g.camera.zoom && g.camera.zoom !== 1.0) {
+      ctx.translate(g.dimensions.width / 2, g.dimensions.height / 2);
+      ctx.scale(g.camera.zoom, g.camera.zoom);
+      ctx.translate(-g.dimensions.width / 2, -g.dimensions.height / 2);
+    }
 
     // 2. Draw procedural tiling pattern (Grass / Tech ruins grid)
     // Draw repeated grid lines based on camera coordinates
@@ -2567,6 +3380,39 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     g.enemies.forEach((e: any) => {
       ctx.save();
 
+      // If enemy is out of screen (e.g. jumping in the air), only render its warning zone and then skip the body/shadow drawing.
+      if (e.isOutOfScreen) {
+        if (e.drawWarningArea && e.drawWarningArea.type === "GORILLA_JUMP") {
+          ctx.save();
+          const flashIntensity = Math.abs(Math.sin(Date.now() / 120)); // fast pulsing
+          ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + flashIntensity * 0.25})`;
+          ctx.beginPath();
+          ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = `rgba(239, 68, 68, ${0.7 + flashIntensity * 0.3})`;
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([8, 4]);
+          ctx.beginPath();
+          ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Small crosshair indicator
+          ctx.setLineDash([]);
+          ctx.strokeStyle = "#ef4444";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(e.drawWarningArea.targetX - 10, e.drawWarningArea.targetY);
+          ctx.lineTo(e.drawWarningArea.targetX + 10, e.drawWarningArea.targetY);
+          ctx.moveTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY - 10);
+          ctx.lineTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY + 10);
+          ctx.stroke();
+          ctx.restore();
+        }
+        ctx.restore();
+        return;
+      }
+
       // Soft shadow under monster
       ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
       ctx.beginPath();
@@ -2729,65 +3575,308 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.lineWidth = 3.5;
         ctx.stroke();
 
-        // 5. Demonic Angry Eyes with Glowing trail
-        // Angry Eyebrows
-        ctx.strokeStyle = "#000000";
-        ctx.lineWidth = 4;
-        ctx.lineCap = "round";
+        // 5. Demonic Angry Eyes with Glowing trail or Custom Gorilla Face
+        if (e.name && e.name.includes("분조장 고릴라")) {
+          // --- 화가 난 표정의 분조장 고릴라 그리기 ---
+          // 1. 고릴라 주둥이/턱 부근 얼굴 영역 (Facial Mask)
+          ctx.fillStyle = "#1e1b4b"; // 어두운 남색/검정 계열의 고릴라 피부색
+          ctx.beginPath();
+          ctx.arc(e.x, e.y + e.radius * 0.1, e.radius * 0.75, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
 
-        // Left Eyebrow
-        ctx.beginPath();
-        ctx.moveTo(e.x - e.radius * 0.45, e.y - e.radius * 0.38);
-        ctx.lineTo(e.x - e.radius * 0.1, e.y - e.radius * 0.22);
-        ctx.stroke();
+          // 2. 찡그린 미간 주름 (Angry Forehead Wrinkles)
+          ctx.strokeStyle = "#ef4444"; // 붉은 핏줄/화난 주름 연출
+          ctx.lineWidth = 3;
+          ctx.lineCap = "round";
+          
+          // 미간 중앙 가로 주름들
+          ctx.beginPath();
+          ctx.moveTo(e.x - e.radius * 0.2, e.y - e.radius * 0.3);
+          ctx.lineTo(e.x + e.radius * 0.2, e.y - e.radius * 0.3);
+          ctx.moveTo(e.x - e.radius * 0.15, e.y - e.radius * 0.22);
+          ctx.lineTo(e.x + e.radius * 0.15, e.y - e.radius * 0.22);
+          ctx.stroke();
 
-        // Right Eyebrow
-        ctx.beginPath();
-        ctx.moveTo(e.x + e.radius * 0.45, e.y - e.radius * 0.38);
-        ctx.lineTo(e.x + e.radius * 0.1, e.y - e.radius * 0.22);
-        ctx.stroke();
+          // 3. 치켜뜬 성난 고릴라 눈 (Super Angry Glowing Eyes)
+          // 눈 테두리 (검정)
+          ctx.fillStyle = "#000000";
+          ctx.beginPath();
+          ctx.arc(e.x - e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.18, 0, Math.PI * 2);
+          ctx.arc(e.x + e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.18, 0, Math.PI * 2);
+          ctx.fill();
 
-        // Left glowing red/yellow eye
-        ctx.fillStyle = "#ef4444";
-        ctx.beginPath();
-        ctx.ellipse(e.x - e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.16, e.radius * 0.08, -Math.PI / 10, 0, Math.PI * 2);
-        ctx.fill();
+          // 눈 내부 불타는 붉은색/노란색 그라데이션 광기
+          ctx.fillStyle = "#f43f5e"; // Rose 500
+          ctx.beginPath();
+          ctx.ellipse(e.x - e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.15, e.radius * 0.08, -Math.PI / 8, 0, Math.PI * 2);
+          ctx.ellipse(e.x + e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.15, e.radius * 0.08, Math.PI / 8, 0, Math.PI * 2);
+          ctx.fill();
 
-        // Right glowing red/yellow eye
-        ctx.fillStyle = "#ef4444";
-        ctx.beginPath();
-        ctx.ellipse(e.x + e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.16, e.radius * 0.08, Math.PI / 10, 0, Math.PI * 2);
-        ctx.fill();
+          // 이글거리는 노란 눈동자
+          ctx.fillStyle = "#fbbf24"; // Amber 400
+          ctx.beginPath();
+          ctx.arc(e.x - e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.06, 0, Math.PI * 2);
+          ctx.arc(e.x + e.radius * 0.28, e.y - e.radius * 0.12, e.radius * 0.06, 0, Math.PI * 2);
+          ctx.fill();
 
-        // Eye Pupils (glowing white slits)
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.ellipse(e.x - e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.04, e.radius * 0.08, -Math.PI / 10, 0, Math.PI * 2);
-        ctx.ellipse(e.x + e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.04, e.radius * 0.08, Math.PI / 10, 0, Math.PI * 2);
-        ctx.fill();
+          // 4. 강하게 찌푸린 눈썹 (Strong Angry Eyebrows)
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          // 왼쪽 눈썹 (바깥에서 중앙 아래로 급경사)
+          ctx.moveTo(e.x - e.radius * 0.5, e.y - e.radius * 0.28);
+          ctx.lineTo(e.x - e.radius * 0.12, e.y - e.radius * 0.14);
+          // 오른쪽 눈썹
+          ctx.moveTo(e.x + e.radius * 0.5, e.y - e.radius * 0.28);
+          ctx.lineTo(e.x + e.radius * 0.12, e.y - e.radius * 0.14);
+          ctx.stroke();
 
-        // Demonic mouth (cruel grin)
-        ctx.strokeStyle = "#000000";
-        ctx.lineWidth = 3;
-        ctx.fillStyle = "#000000";
-        ctx.beginPath();
-        ctx.arc(e.x, e.y + e.radius * 0.25, e.radius * 0.25, 0, Math.PI, false);
-        ctx.stroke();
+          // 5. 큼직한 고릴라 콧구멍 (Gorilla Flared Nostrils)
+          ctx.fillStyle = "#090514";
+          ctx.beginPath();
+          ctx.ellipse(e.x - e.radius * 0.08, e.y + e.radius * 0.1, e.radius * 0.08, e.radius * 0.05, -Math.PI/6, 0, Math.PI * 2);
+          ctx.ellipse(e.x + e.radius * 0.08, e.y + e.radius * 0.1, e.radius * 0.08, e.radius * 0.05, Math.PI/6, 0, Math.PI * 2);
+          ctx.fill();
 
-        // Teeth inside the mouth for final boss
-        if (e.type === "FINAL_BOSS") {
+          // 콧구멍 찡그린 선들
+          ctx.strokeStyle = "#475569";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(e.x - e.radius * 0.12, e.y + e.radius * 0.02);
+          ctx.lineTo(e.x, e.y + e.radius * 0.08);
+          ctx.lineTo(e.x + e.radius * 0.12, e.y + e.radius * 0.02);
+          ctx.stroke();
+
+          // 6. 극도로 화난 입과 사나운 송곳니 (Roaring Mouth & Fangs)
+          // 벌린 거대한 입 모양 (으르렁거리는 타원형)
+          ctx.fillStyle = "#090514"; // 입속 어둠
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.ellipse(e.x, e.y + e.radius * 0.38, e.radius * 0.38, e.radius * 0.18, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // 빨간 혀
+          ctx.fillStyle = "#f43f5e";
+          ctx.beginPath();
+          ctx.ellipse(e.x, e.y + e.radius * 0.46, e.radius * 0.22, e.radius * 0.08, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 뾰족하고 거대한 송곳니 그리기 (Fangs)
           ctx.fillStyle = "#ffffff";
-          // Draw simple little sharp white triangles for teeth
-          const drawTooth = (tx: number, ty: number, tSize: number, up: boolean) => {
+          const drawGorillaFang = (fx: number, fy: number, sizeW: number, sizeH: number, isUpper: boolean) => {
             ctx.beginPath();
-            ctx.moveTo(tx - tSize / 2, ty);
-            ctx.lineTo(tx + tSize / 2, ty);
-            ctx.lineTo(tx, up ? ty + tSize : ty - tSize);
+            ctx.moveTo(fx - sizeW / 2, fy);
+            ctx.lineTo(fx + sizeW / 2, fy);
+            ctx.lineTo(fx, isUpper ? fy + sizeH : fy - sizeH);
             ctx.closePath();
             ctx.fill();
           };
-          drawTooth(e.x - 8, e.y + e.radius * 0.25, 6, true);
-          drawTooth(e.x + 8, e.y + e.radius * 0.25, 6, true);
+
+          // 윗니 송곳니 (양옆 크게 2개)
+          drawGorillaFang(e.x - e.radius * 0.24, e.y + e.radius * 0.24, e.radius * 0.1, e.radius * 0.15, true);
+          drawGorillaFang(e.x + e.radius * 0.24, e.y + e.radius * 0.24, e.radius * 0.1, e.radius * 0.15, true);
+          // 아랫니 송곳니 (가운데 크게 2개 올라옴)
+          drawGorillaFang(e.x - e.radius * 0.12, e.y + e.radius * 0.5, e.radius * 0.08, e.radius * 0.14, false);
+          drawGorillaFang(e.x + e.radius * 0.12, e.y + e.radius * 0.5, e.radius * 0.08, e.radius * 0.14, false);
+
+          // 소형 이빨 가이드 (자잘하게 채우기)
+          drawGorillaFang(e.x - e.radius * 0.04, e.y + e.radius * 0.24, e.radius * 0.06, e.radius * 0.08, true);
+          drawGorillaFang(e.x + e.radius * 0.04, e.y + e.radius * 0.24, e.radius * 0.06, e.radius * 0.08, true);
+        } else {
+          if (g.cinematic && g.cinematic.type === "victory" && e === g.cinematic.bossId) {
+            // --- DIZZY DEFEATED VICTORY EXPRESSION (X - X) ---
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 4.5;
+            ctx.lineCap = "round";
+
+            // Left X eye
+            ctx.beginPath();
+            ctx.moveTo(e.x - e.radius * 0.35, e.y - e.radius * 0.25);
+            ctx.lineTo(e.x - e.radius * 0.15, e.y - e.radius * 0.05);
+            ctx.moveTo(e.x - e.radius * 0.15, e.y - e.radius * 0.25);
+            ctx.lineTo(e.x - e.radius * 0.35, e.y - e.radius * 0.05);
+            ctx.stroke();
+
+            // Right X eye
+            ctx.beginPath();
+            ctx.moveTo(e.x + e.radius * 0.15, e.y - e.radius * 0.25);
+            ctx.lineTo(e.x + e.radius * 0.35, e.y - e.radius * 0.05);
+            ctx.moveTo(e.x + e.radius * 0.35, e.y - e.radius * 0.25);
+            ctx.lineTo(e.x + e.radius * 0.15, e.y - e.radius * 0.05);
+            ctx.stroke();
+
+            // Dizzy/Defeated squiggly mouth
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            const mouthY = e.y + e.radius * 0.25;
+            ctx.moveTo(e.x - e.radius * 0.2, mouthY);
+            ctx.bezierCurveTo(e.x - e.radius * 0.1, mouthY - 8, e.x + e.radius * 0.1, mouthY + 8, e.x + e.radius * 0.2, mouthY);
+            ctx.stroke();
+          } else {
+            // Angry Eyebrows
+            ctx.strokeStyle = "#000000";
+            ctx.lineWidth = 4;
+            ctx.lineCap = "round";
+
+            // Left Eyebrow
+            ctx.beginPath();
+            ctx.moveTo(e.x - e.radius * 0.45, e.y - e.radius * 0.38);
+            ctx.lineTo(e.x - e.radius * 0.1, e.y - e.radius * 0.22);
+            ctx.stroke();
+
+            // Right Eyebrow
+            ctx.beginPath();
+            ctx.moveTo(e.x + e.radius * 0.45, e.y - e.radius * 0.38);
+            ctx.lineTo(e.x + e.radius * 0.1, e.y - e.radius * 0.22);
+            ctx.stroke();
+
+            // Left glowing red/yellow eye
+            ctx.fillStyle = "#ef4444";
+            ctx.beginPath();
+            ctx.ellipse(e.x - e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.16, e.radius * 0.08, -Math.PI / 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Right glowing red/yellow eye
+            ctx.fillStyle = "#ef4444";
+            ctx.beginPath();
+            ctx.ellipse(e.x + e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.16, e.radius * 0.08, Math.PI / 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eye Pupils (glowing white slits)
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.ellipse(e.x - e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.04, e.radius * 0.08, -Math.PI / 10, 0, Math.PI * 2);
+            ctx.ellipse(e.x + e.radius * 0.26, e.y - e.radius * 0.15, e.radius * 0.04, e.radius * 0.08, Math.PI / 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Demonic mouth (cruel grin)
+            ctx.strokeStyle = "#000000";
+            ctx.lineWidth = 3;
+            ctx.fillStyle = "#000000";
+            ctx.beginPath();
+            ctx.arc(e.x, e.y + e.radius * 0.25, e.radius * 0.25, 0, Math.PI, false);
+            ctx.stroke();
+
+            // Teeth inside the mouth for final boss
+            if (e.type === "FINAL_BOSS") {
+              ctx.fillStyle = "#ffffff";
+              // Draw simple little sharp white triangles for teeth
+              const drawTooth = (tx: number, ty: number, tSize: number, up: boolean) => {
+                ctx.beginPath();
+                ctx.moveTo(tx - tSize / 2, ty);
+                ctx.lineTo(tx + tSize / 2, ty);
+                ctx.lineTo(tx, up ? ty + tSize : ty - tSize);
+                ctx.closePath();
+                ctx.fill();
+              };
+              drawTooth(e.x - 8, e.y + e.radius * 0.25, 6, true);
+              drawTooth(e.x + 8, e.y + e.radius * 0.25, 6, true);
+            }
+          }
+        }
+
+        // Draw custom invulnerability shield if active (Gorilla Pattern 3)
+        if (e.isInvulnerable) {
+          ctx.save();
+          const shieldPulse = Math.sin(Date.now() / 80) * 8;
+          ctx.strokeStyle = "rgba(251, 191, 36, 0.95)"; // golden yellow
+          ctx.lineWidth = 4 + Math.sin(Date.now() / 50) * 1.5;
+          ctx.shadowColor = "#fbbf24";
+          ctx.shadowBlur = 15;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.radius * 1.25 + shieldPulse, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Translucent interior grid / overlay
+          ctx.fillStyle = "rgba(251, 191, 36, 0.08)";
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.radius * 1.25 + shieldPulse, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Draw custom warning zones for special patterns (Monkey & Gorilla Bosses)
+        if (e.drawWarningArea) {
+          ctx.save();
+          if (e.drawWarningArea.type === "AIMING" || e.drawWarningArea.type === "GORILLA_AIMING") {
+            // Target Aiming Red Laser Line (1초 조준)
+            ctx.strokeStyle = "rgba(239, 68, 68, 0.85)";
+            ctx.lineWidth = 3;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(e.x, e.y);
+            ctx.lineTo(e.drawWarningArea.aimX, e.drawWarningArea.aimY);
+            ctx.stroke();
+
+            // Intersecting target crosshair
+            ctx.setLineDash([]);
+            ctx.fillStyle = "rgba(239, 68, 68, 0.35)";
+            ctx.beginPath();
+            ctx.arc(e.drawWarningArea.aimX, e.drawWarningArea.aimY, 14, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(e.drawWarningArea.aimX, e.drawWarningArea.aimY, 14, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (e.drawWarningArea.type === "GORILLA_JUMP") {
+            const flashIntensity = Math.abs(Math.sin(Date.now() / 120)); // fast pulsing
+            ctx.fillStyle = `rgba(239, 68, 68, ${0.2 + flashIntensity * 0.25})`;
+            ctx.beginPath();
+            ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = `rgba(239, 68, 68, ${0.7 + flashIntensity * 0.3})`;
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([8, 4]);
+            ctx.beginPath();
+            ctx.arc(e.drawWarningArea.targetX, e.drawWarningArea.targetY, e.drawWarningArea.radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Small crosshair indicator at center of jump
+            ctx.setLineDash([]);
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(e.drawWarningArea.targetX - 10, e.drawWarningArea.targetY);
+            ctx.lineTo(e.drawWarningArea.targetX + 10, e.drawWarningArea.targetY);
+            ctx.moveTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY - 10);
+            ctx.lineTo(e.drawWarningArea.targetX, e.drawWarningArea.targetY + 10);
+            ctx.stroke();
+          } else if (e.drawWarningArea.type === "HALF_HP_PREPARING") {
+            // Half HP Giant Slam Warning Circle (2초 광역 점멸 경고)
+            const flashIntensity = Math.abs(Math.sin(Date.now() / 150)); // fast pulsing
+            
+            // Draw transparent warning body
+            ctx.fillStyle = `rgba(239, 68, 68, ${0.15 + flashIntensity * 0.2})`;
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.drawWarningArea.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw red dotted outer warning boundary
+            ctx.strokeStyle = `rgba(239, 68, 68, ${0.6 + flashIntensity * 0.4})`;
+            ctx.lineWidth = 3;
+            ctx.setLineDash([10, 5]);
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.drawWarningArea.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Draw countdown timer text above the boss
+            ctx.setLineDash([]);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "900 11px sans-serif";
+            ctx.textAlign = "center";
+            const secsLeft = Math.max(0, e.drawWarningArea.timer / 1000).toFixed(1);
+            ctx.fillText(`🚨 광역 지진 발동 대기: ${secsLeft}초 🚨`, e.x, e.y - e.radius - 20);
+          }
+          ctx.restore();
         }
 
         ctx.restore();
@@ -3015,12 +4104,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       if (p.type === "ACID_BALL") {
-        ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
-        ctx.fill();
+        if (p.isRock) {
+          // Draw boulder / stone with a beautiful crack and shading
+          ctx.fillStyle = "#78350f"; // Dark brown
+          ctx.strokeStyle = "#451a03"; // Darker outline
+          ctx.lineWidth = 1.5;
+          ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
+          ctx.shadowBlur = 5;
+          
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Add a simple stone crack line for visual flair
+          ctx.strokeStyle = "#451a03";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(p.x - p.size / 4, p.y - p.size / 4);
+          ctx.lineTo(p.x + p.size / 6, p.y + p.size / 6);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = p.color;
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       ctx.restore();
@@ -3214,20 +4325,161 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
   };
 
+  // --- DEVELOPER MODE CONTROLS ---
+  const toggleGodMode = () => {
+    const g = gameState.current;
+    const nextVal = !isGodModeState;
+    g.player.isGodMode = nextVal;
+    if (nextVal) {
+      g.player.hp = g.player.maxHp;
+    }
+    setIsGodModeState(nextVal);
+    soundEngine.playUpgradeSelect();
+    updateReactHUD();
+  };
+
+  const devAdjustTime = (secondsChange: number) => {
+    const g = gameState.current;
+    const oldTime = g.player.timeElapsed;
+    g.player.timeElapsed = Math.max(0, g.player.timeElapsed + secondsChange);
+    const actualChange = g.player.timeElapsed - oldTime;
+
+    // Decrease limit time if final boss is active
+    if (g.finalBossActive) {
+      g.finalBossTimer = Math.max(0, g.finalBossTimer - actualChange);
+    }
+
+    // Core fix: Align nextBossSpawnTime to avoid spawning historical or duplicate bosses on time skip
+    g.nextBossSpawnTime = Math.ceil((g.player.timeElapsed + 1) / 60) * 60;
+
+    soundEngine.playUpgradeSelect();
+    updateReactHUD();
+  };
+
+  const devSetTimeExact = (seconds: number) => {
+    const g = gameState.current;
+    const oldTime = g.player.timeElapsed;
+    g.player.timeElapsed = Math.max(0, seconds);
+    const actualChange = g.player.timeElapsed - oldTime;
+
+    // Decrease limit time if final boss is active
+    if (g.finalBossActive) {
+      g.finalBossTimer = Math.max(0, g.finalBossTimer - actualChange);
+    }
+
+    // Core fix: Align nextBossSpawnTime to avoid spawning historical or duplicate bosses on time skip
+    g.nextBossSpawnTime = Math.ceil((g.player.timeElapsed + 1) / 60) * 60;
+
+    soundEngine.playUpgradeSelect();
+    updateReactHUD();
+  };
+
+  const devSetWeaponLevel = (id: WeaponType, level: number, isEvo: boolean) => {
+    const g = gameState.current;
+    g.skills.weapons[id] = { level, isEvo };
+    g.activeWeaponEvolutions[id] = isEvo;
+    
+    // Clear active GUARDIAN projectiles so they recreate with the new level settings
+    if (id === WeaponType.GUARDIAN) {
+      g.projectiles = g.projectiles.filter((p: any) => p.type !== "GUARDIAN");
+    }
+    
+    soundEngine.playEvo();
+    g.particles.push(...createLevelUpSparkles(g.player.x, g.player.y));
+    updateReactHUD();
+  };
+
+  const devGiveAllWeaponsMax = (isEvo: boolean) => {
+    const g = gameState.current;
+    Object.values(WeaponType).forEach((id) => {
+      g.skills.weapons[id] = { level: 5, isEvo };
+      g.activeWeaponEvolutions[id] = isEvo;
+    });
+    // Clear active GUARDIAN projectiles so they recreate with correct max level settings
+    g.projectiles = g.projectiles.filter((p: any) => p.type !== "GUARDIAN");
+    soundEngine.playEvo();
+    g.particles.push(...createLevelUpSparkles(g.player.x, g.player.y));
+    updateReactHUD();
+  };
+
+  const devClearAllWeapons = () => {
+    const g = gameState.current;
+    g.skills.weapons = {} as Record<WeaponType, { level: number; isEvo: boolean }>;
+    Object.values(WeaponType).forEach((id) => {
+      g.activeWeaponEvolutions[id] = false;
+    });
+    // Clear ALL projectiles to avoid any lingering orbital or active projectiles
+    g.projectiles = [];
+    soundEngine.playUpgradeSelect();
+    updateReactHUD();
+  };
+
+  const devKillAllRegularEnemies = () => {
+    const g = gameState.current;
+    g.enemies = g.enemies.filter(e => e.type === "BOSS");
+    soundEngine.playUpgradeSelect();
+    updateReactHUD();
+  };
+
+  const devSpawnBossExact = (minutes: number) => {
+    const g = gameState.current;
+    // Guarantee exactly 1 boss by removing existing bosses
+    g.enemies = g.enemies.filter((e: any) => e.type !== "BOSS" && e.type !== "FINAL_BOSS");
+    // Do not adjust game time as per user instructions, just spawn the specific boss
+    spawnBoss(minutes);
+    soundEngine.playEvo();
+    updateReactHUD();
+  };
+
+  const devSpawnFinalBoss = () => {
+    const g = gameState.current;
+    // Guarantee exactly 1 final boss by removing existing bosses
+    g.enemies = g.enemies.filter((e: any) => e.type !== "BOSS" && e.type !== "FINAL_BOSS");
+    // Do not adjust game time as per user instructions, just spawn the final boss directly
+    spawnFinalBoss();
+    soundEngine.playEvo();
+    updateReactHUD();
+  };
+
+  const toggleLevelLock = () => {
+    const next = !isLevelLocked;
+    setIsLevelLocked(next);
+    gameState.current.levelLock = next;
+    soundEngine.playUpgradeSelect();
+    updateReactHUD();
+  };
+
+  const toggleNormalSpawns = () => {
+    const next = !isNormalSpawnsDisabled;
+    setIsNormalSpawnsDisabled(next);
+    gameState.current.disableNormalSpawns = next;
+    soundEngine.playUpgradeSelect();
+    updateReactHUD();
+  };
+
+  const devSetHugeShield = () => {
+    const g = gameState.current;
+    g.player.maxShield = 10000;
+    g.player.shield = 10000;
+    g.player.lastDamageTime = Date.now();
+    soundEngine.playEvo();
+    updateReactHUD();
+  };
+
   return (
     <div ref={containerRef} className="relative w-full h-full select-none">
       <canvas ref={canvasRef} className="block w-full h-full cursor-none select-none" />
 
       {/* Final Boss Countdown Timer */}
       {finalBossTimeLeft !== null && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-rose-950/95 border border-rose-500/40 px-4 py-1.5 rounded-full text-xs font-black text-rose-200 tracking-wider shadow-lg animate-pulse flex items-center space-x-2 pointer-events-none">
+        <div className="absolute top-40 left-1/2 -translate-x-1/2 z-40 bg-rose-950/95 border border-rose-500/40 px-4 py-1.5 rounded-full text-xs font-black text-rose-200 tracking-wider shadow-lg animate-pulse flex items-center space-x-2 pointer-events-none">
           <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
           <span>최종보스 처치 제한시간: {Math.floor(finalBossTimeLeft / 60)}분 {(finalBossTimeLeft % 60).toString().padStart(2, "0")}초</span>
         </div>
       )}
 
       {/* Top HUD: Time, Kills, XP progress bar */}
-      <div className="absolute top-4 left-4 right-4 z-30 pointer-events-none select-none font-sans flex flex-col space-y-2">
+      <div className="absolute top-20 left-4 right-4 z-30 pointer-events-none select-none font-sans flex flex-col space-y-2">
         {/* Progress Bar */}
         <div className="w-full h-2.5 bg-slate-900/60 border border-slate-800 backdrop-blur-md rounded-full flex p-0.5 overflow-hidden">
           <div
@@ -3281,31 +4533,50 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         </button>
       </div>
 
-      {/* Bottom Floating Health bar */}
+      {/* Bottom Floating Health & Shield bar */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-xs px-4">
-        <div className="bg-slate-950/60 p-2.5 rounded-2xl border border-slate-800/30 backdrop-blur-md shadow-2xl flex flex-col space-y-1">
-          <div className="flex justify-between items-center text-[10px] text-slate-300 font-bold">
-            <span>대원 생존 체력</span>
-            <span className="font-mono text-emerald-400">
-              {inGameHP} / {inGameMaxHP}
-            </span>
+        <div className="bg-slate-950/60 p-2.5 rounded-2xl border border-slate-800/30 backdrop-blur-md shadow-2xl flex flex-col space-y-2">
+          {/* Health Bar */}
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-center text-[10px] text-slate-300 font-bold">
+              <span>대원 생존 체력</span>
+              <span className="font-mono text-emerald-400">
+                {inGameHP} / {inGameMaxHP}
+              </span>
+            </div>
+            <div className="w-full h-3 bg-slate-900 rounded-full overflow-hidden p-0.5 flex">
+              <div
+                className={`h-full rounded-full transition-all duration-75 ${
+                  inGameHP < inGameMaxHP * 0.3
+                    ? "bg-rose-500 animate-pulse"
+                    : "bg-gradient-to-r from-emerald-600 to-emerald-400"
+                }`}
+                style={{ width: `${Math.max(0, Math.min(100, (inGameHP / inGameMaxHP) * 100))}%` }}
+              />
+            </div>
           </div>
-          <div className="w-full h-3 bg-slate-900 rounded-full overflow-hidden p-0.5 flex">
-            <div
-              className={`h-full rounded-full transition-all duration-75 ${
-                inGameHP < inGameMaxHP * 0.3
-                  ? "bg-rose-500 animate-pulse"
-                  : "bg-gradient-to-r from-emerald-600 to-emerald-400"
-              }`}
-              style={{ width: `${Math.max(0, Math.min(100, (inGameHP / inGameMaxHP) * 100))}%` }}
-            />
+
+          {/* Shield Bar */}
+          <div className="flex flex-col space-y-1">
+            <div className="flex justify-between items-center text-[10px] text-slate-300 font-bold">
+              <span>나노 전술 보호막</span>
+              <span className="font-mono text-cyan-400 font-black">
+                {inGameShield} / {inGameMaxShield}
+              </span>
+            </div>
+            <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden p-0.5 flex">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-cyan-600 to-cyan-400 transition-all duration-75 shadow-[0_0_8px_rgba(34,211,238,0.5)]"
+                style={{ width: `${Math.max(0, Math.min(100, (inGameShield / inGameMaxShield) * 100))}%` }}
+              />
+            </div>
           </div>
         </div>
       </div>
 
       {/* BOSS HEALTH INDICATOR BAR (shown on screen top-center if boss is active) */}
       {bossHealth && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-lg px-4 animate-scale-up">
+        <div className="absolute top-44 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-lg px-4 animate-scale-up">
           <div className="bg-slate-950/90 border border-red-500/40 p-3 rounded-2xl backdrop-blur-md shadow-[0_0_20px_rgba(239,68,68,0.25)] flex flex-col space-y-1.5">
             <div className="flex justify-between items-center text-xs text-red-200 font-extrabold tracking-wide">
               <span className="flex items-center space-x-1.5">
@@ -3609,6 +4880,316 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             >
               <span>전투 영역 복귀</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* GOD MODE ACTIVE FLOATING BANNER */}
+      {isGodModeState && (
+        <div className="absolute top-32 left-1/2 -translate-x-1/2 z-40 bg-emerald-950/90 border border-emerald-500/40 px-3 py-1 rounded-full text-[9px] font-black text-emerald-200 tracking-widest shadow-lg flex items-center space-x-1 pointer-events-none animate-pulse">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          <span>무적 상태 (GOD MODE ACTIVE)</span>
+        </div>
+      )}
+
+      {/* DEVELOPER MODE FLOATING TRIGGER BUTTON */}
+      {isDevEnv && (
+        <div className="absolute top-16 left-4 z-40 pointer-events-auto">
+          <button
+            onClick={() => {
+              setShowDevPanel(prev => !prev);
+              soundEngine.playUpgradeSelect();
+            }}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-[10px] font-extrabold tracking-wider shadow-lg border transition-all duration-200 active:scale-95 ${
+              showDevPanel
+                ? "bg-rose-500 border-rose-400 text-white shadow-rose-950/40"
+                : "bg-slate-900/85 border-slate-850 text-rose-400 hover:bg-slate-800"
+            }`}
+          >
+            <span className="animate-pulse">🛠️</span>
+            <span>개발툴 {showDevPanel ? "닫기" : "열기"}</span>
+          </button>
+        </div>
+      )}
+
+      {/* DEVELOPER MODE MAIN CONTROLLER PANEL */}
+      {isDevEnv && showDevPanel && (
+        <div className="absolute inset-x-3 top-14 bottom-3 max-h-[calc(100%-4.2rem)] z-45 bg-slate-950/95 border-2 border-rose-500/40 rounded-2xl p-3.5 flex flex-col space-y-3 shadow-[0_0_30px_rgba(244,63,94,0.2)] backdrop-blur-md overflow-y-auto font-sans text-white text-left animate-fade-in pointer-events-auto">
+          <div className="flex justify-between items-center border-b border-rose-500/20 pb-2 shrink-0">
+            <div className="flex items-center space-x-1.5">
+              <span className="text-sm">🛠️</span>
+              <div>
+                <h3 className="text-xs font-black text-rose-400 tracking-wide">기밀 개발자 디버그 센터</h3>
+                <p className="text-[8px] text-slate-400">구글 AI Studio 전용 디버그 도구</p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setShowDevPanel(false);
+                soundEngine.playUpgradeSelect();
+              }}
+              className="w-5 h-5 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-all"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+
+          {/* Section 1: God Mode Toggle */}
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 flex flex-col space-y-2 shrink-0">
+            <div className="flex justify-between items-center">
+              <div className="text-left">
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">패턴 관측용 무적 상태</span>
+                <h4 className="text-xs font-bold text-white">플레이어 무적 (God Mode)</h4>
+              </div>
+              <button
+                onClick={toggleGodMode}
+                className={`w-20 py-1.5 rounded-lg text-[10px] font-black tracking-wider transition-all duration-200 uppercase active:scale-95 border ${
+                  isGodModeState
+                    ? "bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 border-emerald-300 shadow-lg shadow-emerald-950/20"
+                    : "bg-slate-950 text-slate-400 border-slate-800"
+                }`}
+              >
+                {isGodModeState ? "무적 ON" : "무적 OFF"}
+              </button>
+            </div>
+            <p className="text-[8px] text-slate-400 leading-normal">
+              활성화 시, 체력이 매 프레임 최대로 회복되어 보스 패턴의 안전한 분석 및 디버깅을 지원합니다.
+            </p>
+          </div>
+
+          {/* Section 2: Time Control */}
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 flex flex-col space-y-2.5 text-left shrink-0">
+            <div>
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">시간 가속 / 시뮬레이터</span>
+              <h4 className="text-xs font-bold text-white">경과 시간 조정</h4>
+            </div>
+
+            {/* Current Game Time display */}
+            <div className="bg-slate-950 p-2 rounded-lg border border-slate-900/60 flex justify-between items-center font-mono">
+              <span className="text-[9px] text-slate-400">현재 전투 경과 시간:</span>
+              <span className="text-xs font-black text-rose-400">
+                {Math.floor(inGameTime / 60).toString().padStart(2, "0")}분 {(inGameTime % 60).toString().padStart(2, "0")}초 ({inGameTime}초)
+              </span>
+            </div>
+
+            {/* Incremental presets */}
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
+                onClick={() => devAdjustTime(10)}
+                className="bg-slate-950 hover:bg-slate-800 border border-slate-850 py-1 rounded text-[9px] font-bold font-mono text-slate-300 cursor-pointer"
+              >
+                +10초
+              </button>
+              <button
+                onClick={() => devAdjustTime(60)}
+                className="bg-slate-950 hover:bg-slate-800 border border-slate-850 py-1 rounded text-[9px] font-bold font-mono text-slate-300 cursor-pointer"
+              >
+                +1분
+              </button>
+              <button
+                onClick={() => devAdjustTime(-60)}
+                className="bg-slate-950 hover:bg-slate-800 border border-slate-850 py-1 rounded text-[9px] font-bold font-mono text-slate-300 cursor-pointer"
+              >
+                -1분
+              </button>
+              <button
+                onClick={() => devAdjustTime(-10)}
+                className="bg-slate-950 hover:bg-slate-800 border border-slate-850 py-1 rounded text-[9px] font-bold font-mono text-slate-300 cursor-pointer"
+              >
+                -10초
+              </button>
+            </div>
+
+            {/* Milestone Jumps */}
+            <div className="space-y-1">
+              <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider">주요 전투 국면 바로가기:</span>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  onClick={() => devSetTimeExact(235)}
+                  className="bg-rose-950/40 hover:bg-rose-950/60 border border-rose-900/40 py-1 rounded text-[8px] font-black text-rose-300 cursor-pointer"
+                >
+                  3분 55초 (고릴라 직전)
+                </button>
+                <button
+                  onClick={() => devSetTimeExact(595)}
+                  className="bg-purple-950/40 hover:bg-purple-950/60 border border-purple-900/40 py-1 rounded text-[8px] font-black text-purple-300 cursor-pointer"
+                >
+                  9분 55초 (최종보스 직전)
+                </button>
+                <button
+                  onClick={() => devSetTimeExact(10)}
+                  className="bg-slate-950 hover:bg-slate-800 border border-slate-850 py-1 rounded text-[8px] font-bold text-slate-400 cursor-pointer"
+                >
+                  초기화 (10초)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Weapon / Evolution Selection */}
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 flex flex-col space-y-2.5 shrink-0">
+            <div>
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">무장 및 전술 고속 배치</span>
+              <h4 className="text-xs font-bold text-white">원하는 무기 레벨 5 & 진화(Evo)</h4>
+            </div>
+
+            {/* Quick Bulk commands */}
+            <div className="grid grid-cols-3 gap-1.5 pb-1">
+              <button
+                onClick={() => devGiveAllWeaponsMax(false)}
+                className="bg-sky-950/40 hover:bg-sky-950/60 border border-sky-900/30 py-1.5 rounded-lg text-[8px] font-black text-sky-300 cursor-pointer"
+              >
+                모든 무기 Lv.5 획득
+              </button>
+              <button
+                onClick={() => devGiveAllWeaponsMax(true)}
+                className="bg-amber-950/40 hover:bg-amber-950/60 border border-amber-900/40 py-1.5 rounded-lg text-[8px] font-black text-amber-300 cursor-pointer"
+              >
+                모든 무기 초월진화
+              </button>
+              <button
+                onClick={devClearAllWeapons}
+                className="bg-slate-950 hover:bg-slate-800 border border-slate-800 py-1.5 rounded-lg text-[8px] font-black text-slate-400 cursor-pointer"
+              >
+                무장 초기화
+              </button>
+            </div>
+
+            {/* Weapons list with level buttons */}
+            <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+              {[
+                { id: WeaponType.KUNAI, name: "쿠나이 (지배자)" },
+                { id: WeaponType.SOCCER_BALL, name: "양자축구공" },
+                { id: WeaponType.GUARDIAN, name: "수호자 (방패)" },
+                { id: WeaponType.MOLOTOV, name: "화염병" },
+                { id: WeaponType.LIGHTNING, name: "번개 발사기" },
+                { id: WeaponType.GATLING, name: "전설의 개틀링건" },
+                { id: WeaponType.POOP_SPRAY, name: "분노의 똥 뿌리기" },
+              ].map((w) => {
+                const current = equippedWeapons.find((x) => x.id === w.id);
+                const currentLevelText = current
+                  ? current.isEvo
+                    ? "EVO"
+                    : `Lv.${current.level}`
+                  : "미보유";
+
+                return (
+                  <div key={w.id} className="bg-slate-950/80 p-2 rounded-lg border border-slate-900/60 flex items-center justify-between text-left">
+                    <div className="flex items-center space-x-1.5">
+                      <div className="w-5 h-5 bg-slate-900 rounded border border-slate-800 flex items-center justify-center scale-90">
+                        {renderSkillIcon(w.id, "w-3.5 h-3.5")}
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-black text-white">{w.name}</div>
+                        <span className={`text-[8px] font-bold ${current ? "text-emerald-400" : "text-slate-500"}`}>
+                          상태: {currentLevelText}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => devSetWeaponLevel(w.id, 5, false)}
+                        className="bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-sky-500 text-sky-400 text-[8px] font-black px-2 py-1 rounded transition-all active:scale-95 cursor-pointer"
+                      >
+                        Lv.5 부여
+                      </button>
+                      <button
+                        onClick={() => devSetWeaponLevel(w.id, 5, true)}
+                        className="bg-amber-950/40 hover:bg-amber-950/60 border border-amber-900/30 text-amber-400 text-[8px] font-black px-2 py-1 rounded transition-all active:scale-95 cursor-pointer"
+                      >
+                        즉시 진화
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 4: Monster Spawner & Helpers */}
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 flex flex-col space-y-2.5 text-left shrink-0">
+            <div>
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">실전 전술 필드 제어</span>
+              <h4 className="text-xs font-bold text-white">필드 몬스터 및 보스 스폰 제어</h4>
+            </div>
+
+            {/* Test Helpers (Level Lock, Spawn Toggle, Protect Shield) */}
+            <div className="grid grid-cols-3 gap-1.5 pb-1">
+              <button
+                onClick={toggleLevelLock}
+                className={`py-1 rounded text-[8px] font-black transition-all border ${
+                  isLevelLocked
+                    ? "bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-950/20"
+                    : "bg-slate-950 text-slate-400 border-slate-850"
+                }`}
+              >
+                {isLevelLocked ? "🔒 레벨 고정 ON" : "🔓 레벨 고정 OFF"}
+              </button>
+              <button
+                onClick={toggleNormalSpawns}
+                className={`py-1 rounded text-[8px] font-black transition-all border ${
+                  isNormalSpawnsDisabled
+                    ? "bg-purple-500 text-white border-purple-400 shadow-md shadow-purple-950/20"
+                    : "bg-slate-950 text-slate-400 border-slate-850"
+                }`}
+              >
+                {isNormalSpawnsDisabled ? "🚫 잡몹 생성 차단" : "👾 잡몹 생성 활성"}
+              </button>
+              <button
+                onClick={devSetHugeShield}
+                className="bg-cyan-950/40 hover:bg-cyan-950/60 border border-cyan-900/40 py-1 rounded text-[8px] font-black text-cyan-300 transition-all active:scale-95 cursor-pointer"
+              >
+                🛡️ 보호막 10000
+              </button>
+            </div>
+
+            {/* Specific Elite Boss Summons */}
+            <div className="space-y-1">
+              <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider">정예 보스 개별 소환 (1마리 보장):</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => devSpawnBossExact(2)}
+                  className="bg-rose-950/40 hover:bg-rose-950/60 border border-rose-900/30 py-1.5 rounded text-[8px] font-extrabold text-rose-300 cursor-pointer"
+                >
+                  🐒 2분 보스 (원숭이) 소환
+                </button>
+                <button
+                  onClick={() => devSpawnBossExact(4)}
+                  className="bg-rose-950/40 hover:bg-rose-950/60 border border-rose-900/30 py-1.5 rounded text-[8px] font-extrabold text-rose-300 cursor-pointer"
+                >
+                  🦍 4분 보스 (고릴라) 소환
+                </button>
+                <button
+                  onClick={() => devSpawnBossExact(6)}
+                  className="bg-rose-950/40 hover:bg-rose-950/60 border border-rose-900/30 py-1.5 rounded text-[8px] font-extrabold text-rose-300 cursor-pointer"
+                >
+                  🤖 6분 보스 (메탈골렘) 소환
+                </button>
+                <button
+                  onClick={() => devSpawnBossExact(8)}
+                  className="bg-rose-950/40 hover:bg-rose-950/60 border border-rose-900/30 py-1.5 rounded text-[8px] font-extrabold text-rose-300 cursor-pointer"
+                >
+                  🌌 8분 보스 (차원침략자) 소환
+                </button>
+              </div>
+            </div>
+
+            {/* Final Boss / Wipe */}
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+              <button
+                onClick={devSpawnFinalBoss}
+                className="bg-purple-900 hover:bg-purple-800 border border-purple-700 py-1.5 rounded text-[8px] font-black text-purple-100 uppercase tracking-wider cursor-pointer"
+              >
+                🌌 최종 보스 (10분) 소환
+              </button>
+              <button
+                onClick={devKillAllRegularEnemies}
+                className="bg-slate-950 hover:bg-slate-850 border border-slate-800 py-1.5 rounded text-[8px] font-bold text-slate-300 cursor-pointer"
+              >
+                일반 잡몹 일괄 처치
+              </button>
+            </div>
           </div>
         </div>
       )}
