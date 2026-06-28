@@ -6,6 +6,9 @@ export enum WeaponType {
   LIGHTNING = "LIGHTNING", // Lightning bolts from above
   GATLING = "GATLING", // Super rapid fire tracer bullets
   POOP_SPRAY = "POOP_SPRAY", // Character leaves a trail of poop behind them
+  BOOMERANG = "BOOMERANG", // Returning rotating blades
+  EXCALIBUR = "EXCALIBUR", // Legendary holy swords falling from sky
+  BLACK_HOLE = "BLACK_HOLE", // Legendary gravitational singularity pulling enemies
 }
 
 export enum PassiveType {
@@ -14,6 +17,7 @@ export enum PassiveType {
   SPEED_BOOST = "SPEED_BOOST", // Movement speed +10% per level
   HP_BOOST = "HP_BOOST", // Max HP +10% per level
   COOLDOWN_REDUCE = "COOLDOWN_REDUCE", // Attack cooldown -8% per level
+  XP_BOOST = "XP_BOOST", // Experience gain +20% per level
 }
 
 export interface UpgradeCard {
@@ -38,6 +42,7 @@ export interface PlayerStats {
   atk: number;
   magnet: number;
   cooldownReduce: number; // multiplier, e.g., 1.0 -> 0.8
+  xpMultiplier?: number;
   gold: number;
   kills: number;
 }

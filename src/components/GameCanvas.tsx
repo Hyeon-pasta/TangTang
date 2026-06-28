@@ -131,6 +131,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       atkMultiplier: 1.0,
       magnetRadius: 70,
       cooldownMultiplier: 1.0,
+      xpMultiplier: 1.0,
       level: 1,
       xp: 0,
       maxXp: 30,
@@ -254,6 +255,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         atkMultiplier: playerAtkMod,
         magnetRadius: playerMagnetMod,
         cooldownMultiplier: 1.0,
+        xpMultiplier: 1.0,
         level: 1,
         xp: 0,
         maxXp: 30,
@@ -393,6 +395,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const hpLvl = g.skills.passives[PassiveType.HP_BOOST]?.level || 0;
     const magnetLvl = g.skills.passives[PassiveType.MAGNET]?.level || 0;
     const cdLvl = g.skills.passives[PassiveType.COOLDOWN_REDUCE]?.level || 0;
+    const xpLvl = g.skills.passives[PassiveType.XP_BOOST]?.level || 0;
 
     const permAtkMod = 1.0 + permanentUpgrades.atkLevel * 0.1;
     const permHpMod = 100 * (1.0 + permanentUpgrades.hpLevel * 0.1);
@@ -411,6 +414,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     g.player.speedMultiplier = (1.0 + speedLvl * 0.1) * (1.0 + equipSpeedBonus);
     g.player.magnetRadius = permMagnetMod * (1.0 + magnetLvl * 0.2) * (1.0 + equipMagnetBonus);
     g.player.cooldownMultiplier = (1.0 - cdLvl * 0.08) * (1.0 - equipCdBonus);
+    g.player.xpMultiplier = 1.0 + xpLvl * 0.2;
 
     const oldMax = g.player.maxHp;
     g.player.maxHp = permHpMod * (1.0 + hpLvl * 0.1) * (1.0 + equipHpBonus);
@@ -549,6 +553,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       { id: WeaponType.MOLOTOV, name: "화염병", desc: "바닥에 던져 지속적인 화염 대미지를 주는 불길 지대를 만듭니다." },
       { id: WeaponType.LIGHTNING, name: "번개 발사기", desc: "하늘에서 무작위 대상을 향해 치명적인 낙뢰를 떨어뜨립니다." },
       { id: WeaponType.POOP_SPRAY, name: "똥 뿌리기", desc: "캐릭터 뒤에 갈색깔 똥이 지속적으로 뿌려져 밟는 적들에게 지속적인 광역 피해를 줍니다." },
+      { id: WeaponType.BOOMERANG, name: "부메랑", desc: "회전하며 날아간 뒤 플레이어에게 돌아오는 강철 부메랑을 던져 왕복 대미지를 줍니다." },
     ];
 
     // Passive list
@@ -558,6 +563,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       { id: PassiveType.SPEED_BOOST, name: "특수 러닝 슈즈", desc: "대원의 이동 속도를 10% 빠르게 합니다." },
       { id: PassiveType.HP_BOOST, name: "방탄 세라믹 슈트", desc: "최대 체력을 10% 늘리고 즉시 20%를 회복합니다." },
       { id: PassiveType.COOLDOWN_REDUCE, name: "에너지 드링크", desc: "모든 무기의 공격 주기 쿨타임을 8% 단축시킵니다." },
+      { id: PassiveType.XP_BOOST, name: "고성능 학습 장치", desc: "획득하는 모든 경험치(XP) 양을 20% 증가시킵니다." },
     ];
 
     const currentWeapons = g.skills.weapons;
@@ -610,6 +616,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         p: PassiveType.SPEED_BOOST,
         name: "황금 무지개 똥폭풍",
         desc: "최종 똥 뿌리기로 진화! 앞뒤좌우로 똥을 뿌리고, 10초마다 6초 동안 무지막지한 위력의 무지개 똥을 뿌려 적들을 파멸시킵니다.",
+      },
+      {
+        w: WeaponType.BOOMERANG,
+        p: PassiveType.XP_BOOST,
+        name: "초공간 톱니바퀴",
+        desc: "차원을 가르는 거대한 플라즈마 톱니바퀴. 사방으로 뻗어나가며 적들을 무한히 관통하고 찢어발깁니다.",
+      },
+      {
+        w: WeaponType.EXCALIBUR,
+        p: PassiveType.ATTACK_BOOST,
+        name: "진·신성제국 성검 엑스칼리버",
+        desc: "신의 심판이 도래합니다. 전 영역에 신성한 거대 성검들이 끊임없이 내리꽂혀 화면의 모든 적들을 성멸시킵니다.",
+      },
+      {
+        w: WeaponType.BLACK_HOLE,
+        p: PassiveType.MAGNET,
+        name: "이차원 붕괴 퀘이사",
+        desc: "특이점 제어의 끝판왕. 화면 전체의 적들을 한순간에 중심으로 빨아들여 대형 퀘이사 소용돌이로 산산조각 냅니다.",
       }
     ];
 
@@ -629,7 +653,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           level: 6,
           icon: pair.w,
           isEvo: true,
-          isLegendary: pair.w === WeaponType.GATLING,
+          isLegendary: pair.w === WeaponType.GATLING || pair.w === WeaponType.EXCALIBUR || pair.w === WeaponType.BLACK_HOLE,
         });
       }
     });
@@ -696,40 +720,46 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
     });
 
-    // Handle GATLING legendary weapon upgrades
-    const hasGatling = !!currentWeapons[WeaponType.GATLING];
-    // 32% chance to draft Gatling initially, or if player already has it, they can upgrade it.
-    const canDraftGatling = hasGatling || (Math.random() < 0.32);
-    if (canDraftGatling) {
-      const gatlingData = currentWeapons[WeaponType.GATLING];
-      if (!gatlingData) {
-        if (Object.keys(currentWeapons).length < 6) {
+    // Handle Legendary Weapon Draft & Upgrades (GATLING, EXCALIBUR, BLACK_HOLE)
+    const legendaryPool = [
+      { id: WeaponType.GATLING, name: "전설의 개틀링건 (보급)", desc: "[초희귀 전설 무기] 전방의 모든 적들을 초고속으로 관통 및 찢어발기는 화포 탄막을 대량 사격합니다." },
+      { id: WeaponType.EXCALIBUR, name: "전설의 성검 엑스칼리버 (보급)", desc: "[초희귀 전설 무기] 하늘에서 거대한 영웅의 성검들이 쏟아져 내려 대지를 가르고 신성한 파동을 뿜어냅니다." },
+      { id: WeaponType.BLACK_HOLE, name: "초중력 블랙홀 포 (보급)", desc: "[초희귀 전설 무기] 압축 차원 특이점을 발사해 주변 몬스터를 중심부로 강제 흡입하고 암흑 피해를 줍니다." },
+    ];
+
+    legendaryPool.forEach((leg) => {
+      const legData = currentWeapons[leg.id];
+      const canDraft = !!legData || (Math.random() < 0.32);
+      if (canDraft) {
+        if (!legData) {
+          if (Object.keys(currentWeapons).length < 6) {
+            cards.push({
+              id: `new-${leg.id}`,
+              name: leg.name,
+              description: leg.desc,
+              type: "weapon",
+              skillId: leg.id,
+              level: 1,
+              icon: leg.id,
+              isEvo: false,
+              isLegendary: true,
+            });
+          }
+        } else if (legData.level < 5 && !legData.isEvo) {
           cards.push({
-            id: `new-${WeaponType.GATLING}`,
-            name: "전설의 개틀링건 (보급)",
-            description: "[초희귀 전설 무기] 전방의 모든 적들을 초고속으로 관통 및 찢어발기는 화포 탄막을 대량 사격합니다.",
+            id: `up-${leg.id}`,
+            name: `${leg.name.replace(' (보급)', '')} 튜닝 강화`,
+            description: `위력, 발사 개수, 효과 범위 및 쿨타임 단축이 극한으로 증폭됩니다. (다음 레벨: ${legData.level + 1})`,
             type: "weapon",
-            skillId: WeaponType.GATLING,
-            level: 1,
-            icon: WeaponType.GATLING,
+            skillId: leg.id,
+            level: legData.level + 1,
+            icon: leg.id,
             isEvo: false,
             isLegendary: true,
           });
         }
-      } else if (gatlingData.level < 5 && !gatlingData.isEvo) {
-        cards.push({
-          id: `up-${WeaponType.GATLING}`,
-          name: "개틀링건 튜닝 강화",
-          description: `탄환 피해량, 사격 주기, 관통력 및 탄환 크기가 극한으로 증폭됩니다. (다음 레벨: ${gatlingData.level + 1})`,
-          type: "weapon",
-          skillId: WeaponType.GATLING,
-          level: gatlingData.level + 1,
-          icon: WeaponType.GATLING,
-          isEvo: false,
-          isLegendary: true,
-        });
       }
-    }
+    });
 
     // Select 4 random unique cards (Increased from 3 for more choices as requested!)
     const shuffled = cards.sort(() => 0.5 - Math.random());
@@ -1252,6 +1282,39 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         firePoopSpray(poopData);
       }
     }
+
+    // Boomerang (Returning rotating blades)
+    if (g.skills.weapons[WeaponType.BOOMERANG]) {
+      const boomData = g.skills.weapons[WeaponType.BOOMERANG];
+      g.timers.boomerang = (g.timers.boomerang || 0) + delta;
+      const rate = (boomData.isEvo ? 450 : 1500 - boomData.level * 180) * cdMultiplier;
+      if (g.timers.boomerang >= rate) {
+        g.timers.boomerang = 0;
+        fireBoomerang(boomData);
+      }
+    }
+
+    // Excalibur (Legendary holy swords dropping from sky)
+    if (g.skills.weapons[WeaponType.EXCALIBUR]) {
+      const excalData = g.skills.weapons[WeaponType.EXCALIBUR];
+      g.timers.excalibur = (g.timers.excalibur || 0) + delta;
+      const rate = (excalData.isEvo ? 800 : 2200 - excalData.level * 250) * cdMultiplier;
+      if (g.timers.excalibur >= rate) {
+        g.timers.excalibur = 0;
+        fireExcalibur(excalData);
+      }
+    }
+
+    // Black Hole (Legendary gravitational singularity)
+    if (g.skills.weapons[WeaponType.BLACK_HOLE]) {
+      const bhData = g.skills.weapons[WeaponType.BLACK_HOLE];
+      g.timers.blackHole = (g.timers.blackHole || 0) + delta;
+      const rate = (bhData.isEvo ? 1400 : 3500 - bhData.level * 350) * cdMultiplier;
+      if (g.timers.blackHole >= rate) {
+        g.timers.blackHole = 0;
+        fireBlackHole(bhData);
+      }
+    }
   };
 
   // --- FIRE WEAPON FUNCTIONS ---
@@ -1563,6 +1626,76 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   };
 
+  const fireBoomerang = (wpnData: any) => {
+    const g = gameState.current;
+    const count = wpnData.isEvo ? 6 : 1 + wpnData.level;
+    for (let i = 0; i < count; i++) {
+      const angle = (i * (Math.PI * 2)) / count + Math.random() * 0.2;
+      g.projectiles.push({
+        type: "BOOMERANG",
+        x: g.player.x,
+        y: g.player.y,
+        dx: Math.cos(angle),
+        dy: Math.sin(angle),
+        speed: wpnData.isEvo ? 14 : 9 + wpnData.level * 0.5,
+        size: wpnData.isEvo ? 24 : 14 + wpnData.level * 1.5,
+        damage: (22 + wpnData.level * 12) * g.player.atkMultiplier * (wpnData.isEvo ? 2.5 : 1),
+        timer: 0,
+        life: 4000,
+        isEvo: wpnData.isEvo,
+      });
+    }
+    if (soundEnabledRef.current) soundEngine.playShoot();
+  };
+
+  const fireExcalibur = (wpnData: any) => {
+    const g = gameState.current;
+    const count = wpnData.isEvo ? 8 : 1 + wpnData.level;
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 30 + Math.random() * 140;
+      const targetX = g.player.x + Math.cos(angle) * dist;
+      const targetY = g.player.y + Math.sin(angle) * dist;
+
+      g.projectiles.push({
+        type: "EXCALIBUR",
+        x: targetX,
+        y: targetY,
+        dropOffset: 200,
+        timer: 0,
+        life: 800,
+        radius: wpnData.isEvo ? 110 : 60 + wpnData.level * 8,
+        damage: (90 + wpnData.level * 35) * g.player.atkMultiplier * (wpnData.isEvo ? 2.3 : 1),
+        impacted: false,
+        isEvo: wpnData.isEvo,
+      });
+    }
+    if (soundEnabledRef.current) soundEngine.playShoot();
+  };
+
+  const fireBlackHole = (wpnData: any) => {
+    const g = gameState.current;
+    const count = wpnData.isEvo ? 2 : 1;
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      g.projectiles.push({
+        type: "BLACK_HOLE",
+        x: g.player.x,
+        y: g.player.y,
+        dx: Math.cos(angle),
+        dy: Math.sin(angle),
+        speed: wpnData.isEvo ? 1.5 : 2.2,
+        pullRadius: wpnData.isEvo ? 250 : 130 + wpnData.level * 15,
+        damageRadius: wpnData.isEvo ? 85 : 45 + wpnData.level * 6,
+        damage: (30 + wpnData.level * 15) * g.player.atkMultiplier * (wpnData.isEvo ? 2.5 : 1),
+        life: wpnData.isEvo ? 5000 : 3500 + wpnData.level * 300,
+        tickTimer: 0,
+        isEvo: wpnData.isEvo,
+      });
+    }
+    if (soundEnabledRef.current) soundEngine.playShoot();
+  };
+
   const applyDamageToEnemy = (enemy: any, amount: number, knockbackAmount: number = 5) => {
     if (enemy.isOutOfScreen) return; // Cannot damage out-of-screen/jumping enemies
     // Check for custom invulnerability (e.g. Anger-Issue Gorilla pattern 3)
@@ -1612,6 +1745,82 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const g = gameState.current;
 
     g.projectiles = g.projectiles.filter((p: any) => {
+      if (p.type === "BOOMERANG") {
+        p.timer = (p.timer || 0) + delta;
+        if (p.timer < 550) {
+          p.x += p.dx * p.speed * (delta / 16.6);
+          p.y += p.dy * p.speed * (delta / 16.6);
+        } else {
+          const angleToPlayer = Math.atan2(g.player.y - p.y, g.player.x - p.x);
+          p.x += Math.cos(angleToPlayer) * (p.speed * 1.35) * (delta / 16.6);
+          p.y += Math.sin(angleToPlayer) * (p.speed * 1.35) * (delta / 16.6);
+          if (p.timer > 700 && Math.hypot(g.player.x - p.x, g.player.y - p.y) < 35) {
+            return false;
+          }
+        }
+        p.life -= delta;
+
+        if (!p.hitEnemies) p.hitEnemies = new Set();
+        for (let i = 0; i < g.enemies.length; i++) {
+          const e = g.enemies[i];
+          if (e.isOutOfScreen) continue;
+          if (Math.hypot(e.x - p.x, e.y - p.y) < e.radius + p.size) {
+            if (!p.hitEnemies.has(e.id)) {
+              p.hitEnemies.add(e.id);
+              applyDamageToEnemy(e, p.damage, p.isEvo ? 10 : 5);
+            }
+          }
+        }
+        if (p.timer > 550 && !p.clearedReturn) {
+          p.clearedReturn = true;
+          p.hitEnemies.clear();
+        }
+        return p.life > 0;
+      }
+
+      if (p.type === "EXCALIBUR") {
+        p.timer = (p.timer || 0) + delta;
+        if (p.timer < 200) {
+          p.dropOffset = (200 - p.timer) * 1.25;
+        } else if (!p.impacted) {
+          p.impacted = true;
+          p.dropOffset = 0;
+          for (let i = 0; i < g.enemies.length; i++) {
+            const e = g.enemies[i];
+            if (e.isOutOfScreen) continue;
+            if (Math.hypot(e.x - p.x, e.y - p.y) < p.radius) {
+              applyDamageToEnemy(e, p.damage, 12);
+            }
+          }
+        }
+        p.life -= delta;
+        return p.life > 0;
+      }
+
+      if (p.type === "BLACK_HOLE") {
+        p.x += p.dx * p.speed * (delta / 16.6);
+        p.y += p.dy * p.speed * (delta / 16.6);
+        p.life -= delta;
+        p.tickTimer = (p.tickTimer || 0) + delta;
+        const doDamage = p.tickTimer >= 220;
+        if (doDamage) p.tickTimer = 0;
+
+        for (let i = 0; i < g.enemies.length; i++) {
+          const e = g.enemies[i];
+          if (e.isOutOfScreen) continue;
+          const dist = Math.hypot(e.x - p.x, e.y - p.y);
+          if (dist < p.pullRadius && dist > 15 && !e.isBoss) {
+            const pullForce = 0.08 * (1 - dist / p.pullRadius);
+            e.x += (p.x - e.x) * pullForce * (delta / 16.6);
+            e.y += (p.y - e.y) * pullForce * (delta / 16.6);
+          }
+          if (doDamage && dist < p.damageRadius) {
+            applyDamageToEnemy(e, p.damage, 0);
+          }
+        }
+        return p.life > 0;
+      }
+
       if (p.type === "GATLING") {
         p.x += p.dx * p.speed * (delta / 16.6);
         p.y += p.dy * p.speed * (delta / 16.6);
@@ -2672,7 +2881,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // "초반에 경험치를 많게 얻게 해줘" (Dynamic early game XP boost)
     // Base boost: 3x. Under level 10 or in the first 90s, make it 8x to level up extremely fast!
     const isEarly = g.player.level <= 10 || g.player.timeElapsed < 90;
-    const xpMult = isEarly ? 8.5 : 3.5;
+    const baseMult = isEarly ? 8.5 : 3.5;
+    const passiveXpMult = g.player.xpMultiplier || 1.0;
+    const xpMult = baseMult * passiveXpMult;
 
     // Gold gain multiplier from Ring Reinforcement
     const ringLevel = g.equipmentReinforcements?.ring || 0;
@@ -3974,6 +4185,78 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // 7. Draw Projectiles
     g.projectiles.forEach((p: any) => {
       ctx.save();
+
+      if (p.type === "BOOMERANG") {
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.timer || 0) * 0.025);
+        ctx.strokeStyle = p.isEvo ? "#ec4899" : "#06b6d4";
+        ctx.lineWidth = p.isEvo ? 4.5 : 3;
+        ctx.shadowColor = ctx.strokeStyle;
+        ctx.shadowBlur = p.isEvo ? 12 : 6;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size, 0, Math.PI * 1.6);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-p.size * 0.8, 0);
+        ctx.lineTo(p.size * 0.8, 0);
+        ctx.moveTo(0, -p.size * 0.8);
+        ctx.lineTo(0, p.size * 0.8);
+        ctx.stroke();
+      }
+
+      if (p.type === "EXCALIBUR") {
+        ctx.translate(p.x, p.y - (p.dropOffset || 0));
+        ctx.strokeStyle = p.isEvo ? "#ec4899" : "#eab308";
+        ctx.fillStyle = p.isEvo ? "#fbcfe8" : "#fef08a";
+        ctx.shadowColor = p.isEvo ? "#db2777" : "#ca8a04";
+        ctx.shadowBlur = 15;
+        ctx.lineWidth = 3.5;
+
+        ctx.beginPath();
+        ctx.moveTo(0, 35);
+        ctx.lineTo(-12, -22);
+        ctx.lineTo(12, -22);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillRect(-20, -28, 40, 6);
+        ctx.fillRect(-6, -50, 12, 22);
+
+        if (p.impacted) {
+          ctx.strokeStyle = (p.isEvo ? "rgba(236, 72, 153, " : "rgba(234, 179, 8, ") + Math.max(0, p.life / 800) + ")";
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.arc(0, p.dropOffset || 0, p.radius * (1 - p.life / 800), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      if (p.type === "BLACK_HOLE") {
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.life || 0) * -0.012);
+        ctx.strokeStyle = p.isEvo ? "#ec4899" : "#8b5cf6";
+        ctx.lineWidth = 4;
+        ctx.shadowColor = p.isEvo ? "#f472b6" : "#c084fc";
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.damageRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = "#030712";
+        ctx.beginPath();
+        ctx.arc(0, 0, p.damageRadius * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = p.isEvo ? "#fbcfe8" : "#d8b4fe";
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.damageRadius * 0.85, i * 2.1, i * 2.1 + 1.2);
+          ctx.stroke();
+        }
+      }
 
       if (p.type === "KUNAI") {
         ctx.translate(p.x, p.y);

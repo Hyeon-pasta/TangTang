@@ -26,7 +26,10 @@ import {
   Sparkles,
   BookOpen,
   X,
-  ArrowRight
+  ArrowRight,
+  Disc,
+  Sword,
+  Aperture
 } from "lucide-react";
 import {
   WeaponType,
@@ -54,6 +57,12 @@ export const renderSkillIcon = (id: string, className = "w-6 h-6") => {
       return <Sparkles className={`${className} text-amber-400 animate-pulse`} />;
     case WeaponType.POOP_SPRAY:
       return <Sparkles className={`${className} text-amber-700`} />;
+    case WeaponType.BOOMERANG:
+      return <Disc className={`${className} text-cyan-400 animate-spin`} />;
+    case WeaponType.EXCALIBUR:
+      return <Sword className={`${className} text-yellow-500`} />;
+    case WeaponType.BLACK_HOLE:
+      return <Aperture className={`${className} text-purple-400 animate-spin`} />;
     case PassiveType.ATTACK_BOOST:
       return <Swords className={`${className} text-red-400`} />;
     case PassiveType.MAGNET:
@@ -64,6 +73,8 @@ export const renderSkillIcon = (id: string, className = "w-6 h-6") => {
       return <Heart className={`${className} text-rose-500`} />;
     case PassiveType.COOLDOWN_REDUCE:
       return <Timer className={`${className} text-indigo-400`} />;
+    case PassiveType.XP_BOOST:
+      return <BookOpen className={`${className} text-amber-400`} />;
     default:
       return <HelpCircle className={`${className} text-slate-400`} />;
   }
@@ -168,6 +179,48 @@ export const weaponsCodex = [
     ],
     evoWith: "특수 러닝 슈즈",
     evoResult: "황금 무지개 똥폭풍"
+  },
+  {
+    id: WeaponType.BOOMERANG,
+    name: "부메랑",
+    desc: "회전하며 원거리까지 날아간 뒤 플레이어에게 되돌아오는 강철 부메랑을 투척하여 왕복 대미지를 입힙니다.",
+    levels: [
+      "1성: 부메랑 2개 투척",
+      "2성: 부메랑 3개 투척 및 사거리 증가",
+      "3성: 부메랑 대미지 30% 증가",
+      "4성: 부메랑 4개 투척 및 회전 속도 급증",
+      "5성: 부메랑 5개 투척 및 적 넉백 효과 탑재"
+    ],
+    evoWith: "고성능 학습 장치",
+    evoResult: "초공간 톱니바퀴"
+  },
+  {
+    id: WeaponType.EXCALIBUR,
+    name: "전설의 성검 엑스칼리버",
+    desc: "[초희귀 전설 무기] 하늘에서 신성한 빛의 성검들이 쏟아져 내려 대지를 붕괴시키고 거대한 광역 멸살 파동을 일으킵니다.",
+    levels: [
+      "1성: 하늘에서 거대 성검 2자루 낙하 타격",
+      "2성: 성검 3자루 낙하 및 충격파 범위 확대",
+      "3성: 신성 대미지 배율 50% 폭증",
+      "4성: 성검 낙하 주기 단축 및 4자루 낙하",
+      "5성: 대지 붕괴 폭발 대미지 2배 극대 증가"
+    ],
+    evoWith: "특공 강화 탄환",
+    evoResult: "진·신성제국 성검 엑스칼리버"
+  },
+  {
+    id: WeaponType.BLACK_HOLE,
+    name: "초중력 블랙홀 포",
+    desc: "[초희귀 전설 무기] 압축 차원 특이점 구체 발사해 주변의 모든 몬스터를 중심부로 강제 흡입하고 지속 파멸 피해를 줍니다.",
+    levels: [
+      "1성: 중력장 구체 1개 생성 (흡입 및 지속 피해)",
+      "2성: 중력장 범위 25% 확대 및 흡입력 증폭",
+      "3성: 암흑 물질 지속 대미지 40% 증가",
+      "4성: 구체 유지 시간 1.5초 연장",
+      "5성: 소멸 시 거대한 중력 붕괴 대폭발 탑재"
+    ],
+    evoWith: "강력 전자기석",
+    evoResult: "이차원 붕괴 퀘이사"
   }
 ];
 
@@ -236,6 +289,19 @@ export const passivesCodex = [
       "5레벨: 모든 공격 주기 40% 대단축"
     ],
     evoFor: "수호자 ➜ 디펜더 보호구 / 개틀링건 ➜ 초시공 플라즈마 개틀링"
+  },
+  {
+    id: PassiveType.XP_BOOST,
+    name: "고성능 학습 장치",
+    desc: "실전 전투 데이터 수집 효율을 극대화하여 획득하는 모든 경험치(XP) 양을 대폭 증폭시킵니다. 레벨업 속도를 급속도로 가속화합니다.",
+    levels: [
+      "1레벨: 획득 경험치 20% 증가",
+      "2레벨: 획득 경험치 40% 증가",
+      "3레벨: 획득 경험치 60% 증가",
+      "4레벨: 획득 경험치 80% 증가",
+      "5레벨: 획득 경험치 100% (2배) 극대 증가"
+    ],
+    evoFor: "전술 보조 범용 장비 (초성장 부스터)"
   }
 ];
 
@@ -281,6 +347,24 @@ export const evoCodex = [
     passiveId: PassiveType.SPEED_BOOST,
     evoName: "황금 무지개 똥폭풍 (EVO)",
     desc: "마침내 고귀한 유기물 비료의 극의에 도달했습니다. 캐릭터의 모든 이동 경로에 영롱하고 전율이 일어나는 형형색색의 무지개 똥폭풍을 살포하여 주변 of 모든 생물을 즉시 정화시킵니다."
+  },
+  {
+    weaponId: WeaponType.BOOMERANG,
+    passiveId: PassiveType.XP_BOOST,
+    evoName: "초공간 톱니바퀴 (EVO)",
+    desc: "차원을 가르는 거대한 플라즈마 톱니바퀴. 사방으로 뻗어나가며 적들을 무한히 관통하고 찢어발기며 다시 회수됩니다."
+  },
+  {
+    weaponId: WeaponType.EXCALIBUR,
+    passiveId: PassiveType.ATTACK_BOOST,
+    evoName: "진·신성제국 성검 엑스칼리버 (EVO)",
+    desc: "신의 심판이 도래합니다. 전 영역에 신성한 거대 성검들이 끊임없이 내리꽂혀 화면의 모든 적들을 성멸시킵니다."
+  },
+  {
+    weaponId: WeaponType.BLACK_HOLE,
+    passiveId: PassiveType.MAGNET,
+    evoName: "이차원 붕괴 퀘이사 (EVO)",
+    desc: "특이점 제어의 끝판왕. 화면 전체의 적들을 한순간에 중심으로 빨아들여 암흑 에너지가 폭발하는 대형 퀘이사 소용돌이로 산산조각 냅니다."
   }
 ];
 
